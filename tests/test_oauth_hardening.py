@@ -178,6 +178,12 @@ def test_oauth_requires_signing_key_of_32_bytes(key: str) -> None:
         _oauth_config(jwt_signing_key=key)
 
 
+@pytest.mark.parametrize("key", ["k" * 48, "abcdefgh" * 6])
+def test_oauth_rejects_low_entropy_signing_key(key: str) -> None:
+    with pytest.raises(ValidationError, match="low-entropy"):
+        _oauth_config(jwt_signing_key=key)
+
+
 def test_signing_key_hidden_from_repr() -> None:
     assert SIGNING_KEY not in repr(_oauth_config())
 
@@ -374,3 +380,107 @@ def test_unwritable_state_dir_names_the_setting(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="NZ_OPENBANK_MCP_STATE_DIR is not writable"):
         durable_client_storage(blocker, SIGNING_KEY)
+
+
+async def test_cull_removes_expired_state_files(tmp_path: Path) -> None:
+    import asyncio
+
+    store = durable_client_storage(tmp_path, SIGNING_KEY)
+    await store.put(key="gone", value={"v": 1}, collection="mcp-authorization-codes", ttl=0.05)
+    await store.put(key="kept", value={"v": 2}, collection="mcp-authorization-codes", ttl=600)
+    await asyncio.sleep(0.1)
+
+    await store.cull()
+
+    names = sorted(
+        p.name for p in (tmp_path / "oauth-proxy").rglob("*.json") if "-info" not in p.name
+    )
+    assert len(names) == 1
+    assert await store.get(key="kept", collection="mcp-authorization-codes") == {"v": 2}
+
+
+class _Code:
+    def __init__(self, code: str) -> None:
+        self.code = code
+
+
+async def _stub_code_store(provider: Any, idp_tokens: dict[str, Any] | None) -> Any:
+    from unittest.mock import AsyncMock, MagicMock
+
+    store = MagicMock()
+    store.get = AsyncMock(
+        return_value=None if idp_tokens is None else MagicMock(idp_tokens=idp_tokens)
+    )
+    store.delete = AsyncMock(return_value=True)
+    provider._code_store = store
+    return store
+
+
+async def test_refused_account_is_rejected_before_anything_is_stored(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from unittest.mock import AsyncMock
+
+    from fastmcp.server.auth.providers.google import GoogleProvider
+    from mcp.server.auth.provider import TokenError
+
+    provider = _provider()
+    codes = await _stub_code_store(provider, {"access_token": "upstream"})
+    provider._token_validator.verify_token = AsyncMock(  # type: ignore[method-assign]
+        return_value=_access("stranger@example.org")
+    )
+    upstream_exchange = AsyncMock()
+    monkeypatch.setattr(GoogleProvider, "exchange_authorization_code", upstream_exchange)
+
+    with pytest.raises(TokenError, match="not allowed"):
+        await provider.exchange_authorization_code(object(), _Code("c1"))  # type: ignore[arg-type]
+
+    upstream_exchange.assert_not_awaited()
+    codes.delete.assert_awaited_once_with(key="c1")
+
+
+@pytest.mark.parametrize("idp_tokens", [{}, {"access_token": ""}, {"access_token": 7}])
+async def test_code_without_upstream_access_token_is_refused(
+    monkeypatch: pytest.MonkeyPatch, idp_tokens: dict[str, Any]
+) -> None:
+    from unittest.mock import AsyncMock
+
+    from fastmcp.server.auth.providers.google import GoogleProvider
+    from mcp.server.auth.provider import TokenError
+
+    provider = _provider()
+    await _stub_code_store(provider, idp_tokens)
+    upstream_exchange = AsyncMock()
+    monkeypatch.setattr(GoogleProvider, "exchange_authorization_code", upstream_exchange)
+
+    with pytest.raises(TokenError, match="not allowed"):
+        await provider.exchange_authorization_code(object(), _Code("c1"))  # type: ignore[arg-type]
+    upstream_exchange.assert_not_awaited()
+
+
+async def test_allowed_account_proceeds_to_the_exchange(monkeypatch: pytest.MonkeyPatch) -> None:
+    from unittest.mock import AsyncMock
+
+    from fastmcp.server.auth.providers.google import GoogleProvider
+    from mcp.shared.auth import OAuthToken
+
+    provider = _provider()
+    codes = await _stub_code_store(provider, {"access_token": "upstream"})
+    provider._token_validator.verify_token = AsyncMock(  # type: ignore[method-assign]
+        return_value=_access("owner@example.com")
+    )
+    monkeypatch.setattr(
+        GoogleProvider,
+        "exchange_authorization_code",
+        AsyncMock(return_value=OAuthToken(access_token="issued")),
+    )
+    monkeypatch.setattr(
+        AllowlistedGoogleOAuthProvider,
+        "load_access_token",
+        AsyncMock(return_value=_access("owner@example.com")),
+    )
+
+    token = await provider.exchange_authorization_code(object(), _Code("c1"))  # type: ignore[arg-type]
+
+    assert token.access_token == "issued"
+    codes.delete.assert_not_awaited()

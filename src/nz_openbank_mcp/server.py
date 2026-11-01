@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import logging
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator, Callable
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -17,6 +19,7 @@ from nz_openbank_mcp import deps
 from nz_openbank_mcp.config import AKAHU_API_HOST, McpHttpConfig, McpOAuthConfig, get_config
 from nz_openbank_mcp.http_auth import (
     AllowlistedGoogleOAuthProvider,
+    DurableOAuthStorage,
     StaticBearerAuthProvider,
     durable_client_storage,
 )
@@ -36,21 +39,51 @@ SERVER_INSTRUCTIONS = (
 )
 
 
-@asynccontextmanager
-async def _lifespan(_server: FastMCP[Any]) -> AsyncIterator[dict[str, Any]]:
-    try:
-        yield {}
-    finally:
-        await deps.aclose_client()
+STATE_CULL_INTERVAL_SECONDS = 3600.0
 
 
-def build_server(*, auth: AuthProvider | None = None) -> FastMCP[Any]:
-    """Construct the root FastMCP server with all sub-servers mounted."""
+async def _cull_periodically(state: DurableOAuthStorage) -> None:
+    while True:
+        try:
+            await state.cull()
+        except Exception:
+            # One failed sweep must not take the server down; the next one retries.
+            logger.warning("OAuth state cull failed", exc_info=True)
+        await asyncio.sleep(STATE_CULL_INTERVAL_SECONDS)
+
+
+def _lifespan(
+    oauth_state: DurableOAuthStorage | None,
+) -> Callable[[FastMCP[Any]], AbstractAsyncContextManager[dict[str, Any]]]:
+    @asynccontextmanager
+    async def lifespan(_server: FastMCP[Any]) -> AsyncIterator[dict[str, Any]]:
+        culler = asyncio.create_task(_cull_periodically(oauth_state)) if oauth_state else None
+        try:
+            yield {}
+        finally:
+            if culler is not None:
+                culler.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await culler
+            await deps.aclose_client()
+
+    return lifespan
+
+
+def build_server(
+    *,
+    auth: AuthProvider | None = None,
+    oauth_state: DurableOAuthStorage | None = None,
+) -> FastMCP[Any]:
+    """Construct the root FastMCP server with all sub-servers mounted.
+
+    oauth_state, if given, is culled of expired entries at startup and hourly.
+    """
     mcp: FastMCP[Any] = FastMCP(
         "nz-openbank-mcp",
         instructions=SERVER_INSTRUCTIONS,
         auth=auth,
-        lifespan=_lifespan,
+        lifespan=_lifespan(oauth_state),
     )
     mcp.mount(accounts.server, namespace="acct")
     mcp.mount(transactions.server, namespace="txn")
@@ -80,7 +113,10 @@ def build_http_server(
             allowed_redirect_uris=oauth_cfg.allowed_redirect_uri_list,
             client_storage=oauth_client_storage,
         )
-        return build_server(auth=auth)
+        state = (
+            oauth_client_storage if isinstance(oauth_client_storage, DurableOAuthStorage) else None
+        )
+        return build_server(auth=auth, oauth_state=state)
     return build_server(auth=StaticBearerAuthProvider(http_cfg.bearer_token))
 
 

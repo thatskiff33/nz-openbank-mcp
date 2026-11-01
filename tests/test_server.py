@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -344,12 +345,13 @@ async def test_oauth_provider_exchange_authorization_code_enforces_allowlist(
 
     monkeypatch.setattr(GoogleProvider, "exchange_authorization_code", fake_exchange)
     monkeypatch.setattr(AllowlistedGoogleOAuthProvider, "load_access_token", fake_allowed)
-    oauth_token = await provider.exchange_authorization_code(object(), object())
+    unknown_code: Any = SimpleNamespace(code="not-stored")
+    oauth_token = await provider.exchange_authorization_code(object(), unknown_code)  # type: ignore[arg-type]
     assert oauth_token.access_token == "issued-token"
 
     monkeypatch.setattr(AllowlistedGoogleOAuthProvider, "load_access_token", fake_denied)
     with pytest.raises(TokenError, match="not allowed"):
-        await provider.exchange_authorization_code(object(), object())
+        await provider.exchange_authorization_code(object(), unknown_code)  # type: ignore[arg-type]
 
 
 def test_http_app_rejects_missing_bearer(fake_env: None) -> None:
@@ -600,3 +602,72 @@ def test_config_is_read_once_per_process(fake_env: None, monkeypatch: pytest.Mon
     monkeypatch.setenv("AKAHU_READ_ONLY", "false")
     assert get_config() is first
     assert first.read_only is True
+
+
+async def test_oauth_state_is_culled_while_the_server_runs(
+    fake_env: None, caplog: pytest.LogCaptureFixture
+) -> None:
+    import asyncio
+    from unittest.mock import AsyncMock, MagicMock
+
+    from fastmcp import Client
+
+    from nz_openbank_mcp.http_auth import DurableOAuthStorage
+    from nz_openbank_mcp.server import build_server
+
+    state = MagicMock(spec=DurableOAuthStorage)
+    state.cull = AsyncMock(side_effect=[RuntimeError("disk"), None])
+    with caplog.at_level(logging.WARNING):
+        async with Client(build_server(oauth_state=state)) as client:
+            await client.list_tools()
+            await asyncio.sleep(0)
+    state.cull.assert_awaited_once()
+    assert "OAuth state cull failed" in caplog.text
+
+
+async def test_cull_loop_repeats_on_its_interval(monkeypatch: pytest.MonkeyPatch) -> None:
+    import asyncio
+    from unittest.mock import AsyncMock, MagicMock
+
+    import nz_openbank_mcp.server as server_mod
+
+    monkeypatch.setattr(server_mod, "STATE_CULL_INTERVAL_SECONDS", 0)
+    state = MagicMock()
+    state.cull = AsyncMock()
+    task = asyncio.create_task(server_mod._cull_periodically(state))
+    for _ in range(5):
+        await asyncio.sleep(0)
+    task.cancel()
+    assert state.cull.await_count >= 2
+
+
+def test_http_server_culls_only_durable_storage(
+    fake_env: None, tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from key_value.aio.stores.memory import MemoryStore
+
+    import nz_openbank_mcp.server as server_mod
+    from nz_openbank_mcp.config import McpHttpConfig, McpOAuthConfig
+    from nz_openbank_mcp.http_auth import durable_client_storage
+
+    seen: list[object] = []
+    real = server_mod.build_server
+
+    def spy(**kwargs: Any) -> Any:
+        seen.append(kwargs.get("oauth_state"))
+        return real(**kwargs)
+
+    monkeypatch.setattr(server_mod, "build_server", spy)
+    oauth = McpOAuthConfig(
+        google_client_id="google-client.apps.googleusercontent.com",
+        google_client_secret="google-secret",
+        public_base_url="https://mcp.example.com/openbank-mcp",
+        allowed_users="owner@example.com",
+        jwt_signing_key="jwt_signing_key_test_0123456789abcdef",
+        state_dir=str(tmp_path),
+    )
+    cfg = McpHttpConfig(auth_mode="oauth")
+    durable = durable_client_storage(tmp_path, "jwt_signing_key_test_0123456789abcdef")
+    server_mod.build_http_server(cfg, oauth, oauth_client_storage=durable)
+    server_mod.build_http_server(cfg, oauth, oauth_client_storage=MemoryStore())
+    assert seen == [durable, None]

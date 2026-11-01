@@ -39,11 +39,12 @@ acceptable only with all of these controls in place:
 
 ## Host Settings
 
-Add these values to `/etc/nz-openbank-mcp/nz-openbank.env` for OAuth mode:
+Keep `AKAHU_READ_ONLY=true` and `AKAHU_AUTOMATION_BYPASS=false` in
+`/etc/nz-openbank-mcp/nz-openbank.env`. Add these values to
+`/etc/nz-openbank-mcp/nz-openbank-http.env` (root:root 0600, loaded only by
+`nz-openbank-http.service`) for OAuth mode:
 
 ```bash
-AKAHU_READ_ONLY=true
-AKAHU_AUTOMATION_BYPASS=false
 NZ_OPENBANK_MCP_AUTH_MODE=oauth
 NZ_OPENBANK_MCP_GOOGLE_CLIENT_ID=REPLACE_WITH_GOOGLE_CLIENT_ID
 NZ_OPENBANK_MCP_GOOGLE_CLIENT_SECRET=REPLACE_WITH_GOOGLE_CLIENT_SECRET
@@ -59,22 +60,24 @@ NZ_OPENBANK_MCP_HTTP_PATH=/mcp
 
 OAuth mode refuses to start without these:
 
-- `NZ_OPENBANK_MCP_JWT_SIGNING_KEY`: at least 32 bytes. Signs the tokens the
+- `NZ_OPENBANK_MCP_JWT_SIGNING_KEY`: at least 32 bytes with at least 10
+  distinct characters. Signs the tokens the
   server issues to connectors and encrypts stored client registrations. It is
   independent of the Google client secret, so rotating that secret does not
   log anyone out. Generate it with `openssl rand -base64 48`.
 - `NZ_OPENBANK_MCP_STATE_DIR`: absolute directory for encrypted client
   registrations and the upstream Google tokens behind issued sessions.
-  `nz-openbank-http.service` sets it to `/var/lib/nz-openbank-mcp` and creates
+  `nz-openbank-http.service` sets it to `/var/lib/nz-openbank-http` and creates
   that directory via `StateDirectory=`; the server keeps its `oauth-proxy/`
-  subdirectory at mode 0700.
+  subdirectory at mode 0700 and deletes expired entries hourly.
 
-Upgrading from a release without these settings: earlier versions kept OAuth
-state under the service user's FastMCP data directory, encrypted with a key
-derived from the Google client secret. After the upgrade, delete it:
+Upgrading from 0.1.2 or earlier: move the `NZ_OPENBANK_MCP_*` values into
+`nz-openbank-http.env`, install the new unit, then delete the old OAuth state.
+Connectors sign in again afterwards.
 
 ```bash
-sudo rm -rf /var/lib/nz-openbank-mcp/.local/share/fastmcp/oauth-proxy
+sudo rm -rf /var/lib/nz-openbank-mcp/oauth-proxy \
+  /var/lib/nz-openbank-mcp/fastmcp /var/lib/nz-openbank-mcp/.local/share/fastmcp
 ```
 
 Allowlist semantics:
@@ -151,7 +154,7 @@ Create a Google OAuth client for this server in Google Cloud Console:
    ```
 
 8. Save the client ID and client secret into the runtime secret store or
-   `/etc/nz-openbank-mcp/nz-openbank.env`. Do not commit `client_secret.json` or raw
+   `/etc/nz-openbank-mcp/nz-openbank-http.env`. Do not commit `client_secret.json` or raw
    secret values.
 9. Set `NZ_OPENBANK_MCP_ALLOWED_USERS` to exact Google email addresses that may
    use the connector, or set `NZ_OPENBANK_MCP_ALLOWED_DOMAINS` to Google

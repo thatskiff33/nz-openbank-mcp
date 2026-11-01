@@ -11,8 +11,12 @@ documented in `docs/public-https-streamable-http.md`.
   `tunnel-client run --profile nz-openbank` daemon.
 - `nz-openbank-http.service` - systemd unit for the authenticated Streamable HTTP
   MCP server.
-- `nz-openbank.env.example` - placeholder-only environment file. Copy this to
-  `/etc/nz-openbank-mcp/nz-openbank.env` and fill values on the host only.
+- `nz-openbank.env.example` - placeholder-only environment shared by both
+  units. Copy this to `/etc/nz-openbank-mcp/nz-openbank.env` and fill values on
+  the host only.
+- `nz-openbank-http.env.example` - placeholder-only HTTP secrets, loaded only by
+  `nz-openbank-http.service`. Copy this to
+  `/etc/nz-openbank-mcp/nz-openbank-http.env`.
 - `nz-openbank.profile.yaml` - secret-free `tunnel-client` profile for the local
   stdio MCP command.
 
@@ -24,13 +28,16 @@ Expected host paths:
 /usr/local/bin/tunnel-client
 /opt/nz-openbank-mcp
 /etc/nz-openbank-mcp/nz-openbank.env
+/etc/nz-openbank-mcp/nz-openbank-http.env
 /etc/tunnel-client/profiles/nz-openbank.yaml
 /etc/systemd/system/nz-openbank-tunnel.service
 /etc/systemd/system/nz-openbank-http.service
 ```
 
-The service runs as `nz-openbank-mcp`, not as root. The env file is root-owned and
-readable only by the service group.
+The tunnel runs as `nz-openbank-mcp`, not as root. The HTTP service runs under
+its own systemd dynamic user with state in `/var/lib/nz-openbank-http`, so the
+tunnel cannot read its secrets or OAuth state. `nz-openbank.env` is root-owned
+and readable only by the service group; `nz-openbank-http.env` is root-only.
 
 ## Install Commands
 
@@ -130,7 +137,8 @@ with the ChatGPT workspace. It requires:
 
 - `NZ_OPENBANK_MCP_AUTH_MODE=oauth` with the Google OAuth vars filled. Bearer
   mode remains available only for approved clients that cannot use OAuth, and
-  needs a bearer token of at least 32 characters.
+  needs a bearer token of at least 32 characters with at least 10 distinct
+  characters.
 - `NZ_OPENBANK_MCP_HTTP_HOST=127.0.0.1` when Caddy runs on the same host. If the
   reverse proxy is on a separate host, bind to a private interface and firewall
   the listener so only the reverse proxy can reach it.
@@ -151,6 +159,10 @@ OAuth mode requires:
 Install and verify:
 
 ```bash
+sudo install -o root -g root -m 0600 \
+  deploy/linux-systemd/nz-openbank-http.env.example \
+  /etc/nz-openbank-mcp/nz-openbank-http.env
+sudoedit /etc/nz-openbank-mcp/nz-openbank-http.env
 sudo install -o root -g root -m 0644 \
   deploy/linux-systemd/nz-openbank-http.service \
   /etc/systemd/system/nz-openbank-http.service
@@ -174,6 +186,9 @@ Only the operator may fill these values in `/etc/nz-openbank-mcp/nz-openbank.env
 - `CONTROL_PLANE_API_KEY`
 - `AKAHU_APP_TOKEN`
 - `AKAHU_USER_TOKEN`
+
+and these in `/etc/nz-openbank-mcp/nz-openbank-http.env`:
+
 - `NZ_OPENBANK_MCP_BEARER_TOKEN`
 - `NZ_OPENBANK_MCP_JWT_SIGNING_KEY`
 - `NZ_OPENBANK_MCP_GOOGLE_CLIENT_ID`
