@@ -176,7 +176,8 @@ Then restart Claude Desktop.
 The same `plugin/` directory is a plugin for each host, and this repo is a
 marketplace for each. Every host launches the pinned PyPI release with
 `AKAHU_READ_ONLY=true` and `AKAHU_AUTOMATION_BYPASS=false` unless you set
-otherwise.
+otherwise. In Codex, Grok Build and the Cursor CLI, an `AKAHU_*` value already
+exported in the shell that starts the host counts as setting it.
 
 Codex and Grok Build read the four `AKAHU_*` settings from the environment the
 host was started in; neither has a secret prompt for plugin servers. Load the

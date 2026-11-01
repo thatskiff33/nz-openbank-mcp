@@ -158,8 +158,8 @@ def check_other_hosts(version: str, keys: set[str]) -> None:
         for entry in marketplace.get("plugins", []):
             source = obj(entry, rel).get("source")
             path = obj(source, rel).get(key) if key else source
-            if not isinstance(path, str) or not (ROOT / path / ".claude-plugin").is_dir():
-                fail(f"{rel}: plugin source {path!r} is not the plugin directory")
+            if path not in ("plugin", "./plugin"):
+                fail(f"{rel}: plugin source {path!r} must be the plugin/ directory")
 
 
 def main() -> int:

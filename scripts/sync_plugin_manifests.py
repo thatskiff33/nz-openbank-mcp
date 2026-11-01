@@ -43,8 +43,12 @@ def load_base() -> dict[str, Any]:
     base = tomllib.loads(BASE.read_text(encoding="utf-8"))
     pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     base["version"] = pyproject["project"]["version"]
+    if base["name"] != pyproject["project"]["name"]:
+        raise SystemExit("plugin.base.toml: name must match pyproject.toml [project] name")
     for setting in base["setting"]:
         var = setting["var"]
+        if not var.startswith("AKAHU_"):
+            raise SystemExit(f"plugin.base.toml: {var} is not an AKAHU_* setting")
         if setting["key"] != var.lower():
             raise SystemExit(f"plugin.base.toml: key {setting['key']!r} must be {var.lower()!r}")
         if not setting.get("sensitive") and "default" not in setting:
