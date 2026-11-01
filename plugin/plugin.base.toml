@@ -16,6 +16,14 @@ license = "Apache-2.0"
 keywords = ["mcp", "akahu", "open-finance", "new-zealand", "banking"]
 category = "Productivity"
 
+# MCP Registry entry (server.json). The name must stay under io.github.<owner>/
+# and match the `mcp-name:` line in README.md, which PyPI publishes.
+[registry]
+name = "io.github.thatskiff33/nz-openbank-mcp"
+title = "NZ Open Banking (Akahu)"
+description = "Ask about your NZ bank accounts via Akahu open finance. Read-only by default, consent per write."
+icon = "https://raw.githubusercontent.com/thatskiff33/nz-openbank-mcp/main/docs/assets/icon.svg"
+
 [author]
 name = "thatskiff33"
 email = "258212727+thatskiff33@users.noreply.github.com"

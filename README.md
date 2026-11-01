@@ -1,4 +1,21 @@
-# nz-openbank-mcp
+<p align="center">
+  <img src="https://raw.githubusercontent.com/thatskiff33/nz-openbank-mcp/main/docs/assets/banner.svg" alt="nz-openbank-mcp: ask your AI assistant about your New Zealand bank accounts" width="100%">
+</p>
+
+<p align="center">
+  <a href="https://pypi.org/project/nz-openbank-mcp/"><img src="https://img.shields.io/pypi/v/nz-openbank-mcp?color=2dd4bf&label=PyPI" alt="PyPI version"></a>
+  <a href="https://pypi.org/project/nz-openbank-mcp/"><img src="https://img.shields.io/pypi/pyversions/nz-openbank-mcp?color=2dd4bf" alt="Python versions"></a>
+  <a href="https://github.com/thatskiff33/nz-openbank-mcp/actions/workflows/ci.yml"><img src="https://github.com/thatskiff33/nz-openbank-mcp/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
+  <a href="https://github.com/thatskiff33/nz-openbank-mcp/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/coverage-100%25-2dd4bf" alt="Coverage 100%"></a>
+  <a href="https://github.com/thatskiff33/nz-openbank-mcp/blob/main/LICENSE"><img src="https://img.shields.io/github/license/thatskiff33/nz-openbank-mcp?color=2dd4bf" alt="License Apache-2.0"></a>
+  <a href="https://github.com/thatskiff33/nz-openbank-mcp/releases/latest"><img src="https://img.shields.io/github/v/release/thatskiff33/nz-openbank-mcp?color=2dd4bf&label=release" alt="Latest release"></a>
+</p>
+
+<p align="center">
+  <a href="https://cursor.com/install-mcp?name=nz-openbank-mcp&config=eyJjb21tYW5kIjoidXZ4IiwiYXJncyI6WyJuei1vcGVuYmFuay1tY3AiXSwiZW52Ijp7IkFLQUhVX1VTRVJfVE9LRU4iOiIke2VudjpBS0FIVV9VU0VSX1RPS0VOfSIsIkFLQUhVX0FQUF9UT0tFTiI6IiR7ZW52OkFLQUhVX0FQUF9UT0tFTn0iLCJBS0FIVV9SRUFEX09OTFkiOiJ0cnVlIiwiQUtBSFVfQVVUT01BVElPTl9CWVBBU1MiOiJmYWxzZSJ9fQ%3D%3D"><img src="https://cursor.com/deeplink/mcp-install-dark.svg" alt="Add to Cursor" height="32"></a>
+  <a href="https://github.com/thatskiff33/nz-openbank-mcp/releases/latest"><img src="https://img.shields.io/badge/Claude_Desktop-Download_.mcpb-d97757?style=for-the-badge" alt="Download for Claude Desktop" height="32"></a>
+  <a href="https://github.com/thatskiff33/nz-openbank-mcp#claude-code"><img src="https://img.shields.io/badge/Claude_Code-Plugin-d97757?style=for-the-badge" alt="Claude Code plugin" height="32"></a>
+</p>
 
 Ask an AI assistant about your New Zealand bank accounts without handing your
 banking credentials to anyone new. `nz-openbank-mcp` is a Model Context
@@ -6,16 +23,44 @@ Protocol server that talks to [Akahu](https://akahu.nz), the NZ open-finance
 service, using a Personal App you create and control. It runs on your own
 machine, starts read-only, and asks before anything changes.
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/thatskiff33/nz-openbank-mcp/main/docs/assets/demo.svg" alt="Example conversation: the assistant calls acct_list_accounts and txn_get_transactions, then summarises October grocery spending by store" width="100%">
+</p>
+
+> Unofficial. Not affiliated with or endorsed by Akahu or any bank.
+
+<!-- mcp-name: io.github.thatskiff33/nz-openbank-mcp -->
+
+## Try asking
+
+- "What did I spend on groceries last month, and at which shops?"
+- "Which subscriptions am I paying for, and how much do they cost per year?"
+- "Show my balances across every account."
+- "Find every payment to my landlord this year."
+- "Anything pending that has not settled yet?"
+- "Compare my eating-out spend in September and October."
+
+## Why it is safe to try
+
+| | |
+| --- | --- |
+| **Read-only by default** | Write tools refuse until you set `AKAHU_READ_ONLY=false`. |
+| **Consent per write** | With writes on, every write asks you first and shows exactly what will be sent. |
+| **Local and private** | Runs on your machine over stdio and talks only to `api.akahu.io`. Tokens and transaction contents are never logged. |
+| **Masked account numbers** | Only the bank code, the last four digits and the suffix are shown. |
+| **Small and tested** | Thin wrappers over Akahu endpoints, strict typing, and 100% line and branch test coverage enforced in CI. |
+
 [PyPI](https://pypi.org/project/nz-openbank-mcp/) ·
 [Releases](https://github.com/thatskiff33/nz-openbank-mcp/releases) ·
 [Security policy](https://github.com/thatskiff33/nz-openbank-mcp/blob/main/SECURITY.md)
-
-> Unofficial. Not affiliated with or endorsed by Akahu or any bank.
 
 ## What it can do
 
 The server exposes 14 tools. Ten only read; four change something and are
 off until you turn writes on.
+
+<details>
+<summary><strong>All 14 tools</strong></summary>
 
 | Tool | Writes? | Purpose |
 | --- | --- | --- |
@@ -33,6 +78,8 @@ off until you turn writes on.
 | `acct_refresh_account` | yes | Ask Akahu to fetch fresh data for one account |
 | `txn_report_transaction_issue` | yes | Open a support ticket with Akahu about a transaction |
 | `id_verify_name` | yes | Check a name against the account holder; needs an extra scope (see [Limits](https://github.com/thatskiff33/nz-openbank-mcp#limits)) and may be charged per call |
+
+</details>
 
 There are no spending reports, budgets or forecasts built in. The assistant
 works those out from the transactions, which keeps the server small and easy
@@ -144,6 +191,10 @@ them, not the repo. Leave the safety settings empty to keep the defaults. The
 server shows up as `plugin-nz-openbank-mcp-akahu`. Settings left unset there
 fall back to the environment Cursor started in. To try a local checkout, start
 the Cursor CLI with `--plugin-dir /path/to/nz-openbank-mcp/plugin`.
+
+The **Add to Cursor** button at the top installs a plain MCP entry instead of
+the plugin. It reads `AKAHU_USER_TOKEN` and `AKAHU_APP_TOKEN` from the
+environment Cursor starts in, so set them as shown for Codex above.
 
 ### Web connectors (claude.ai, ChatGPT, grok.com)
 

@@ -71,6 +71,7 @@ jobs:
               - 'src/nz_openbank_mcp/__init__.py'
               - 'scripts/check_packaging.py'
               - 'scripts/sync_plugin_manifests.py'
+              - 'server.json'
             docs:
               - '**/*.md'
               - 'docs/**'
