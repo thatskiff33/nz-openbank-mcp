@@ -257,13 +257,33 @@ def test_startup_logs_contain_no_token_material(
 
 def test_bearer_token_minimum_length(fake_env: None, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("OPENBANK_MCP_BEARER_TOKEN", raising=False)
-    monkeypatch.setenv("NZ_OPENBANK_MCP_BEARER_TOKEN", "x" * 31)
+    token = "abcdefghijklmnopqrstuvwxyz012345"
+    monkeypatch.setenv("NZ_OPENBANK_MCP_BEARER_TOKEN", token[:31])
 
     with pytest.raises(ValidationError, match="at least 32 characters"):
         McpHttpConfig()
 
-    monkeypatch.setenv("NZ_OPENBANK_MCP_BEARER_TOKEN", "x" * 32)
-    assert McpHttpConfig().bearer_token.get_secret_value() == "x" * 32
+    monkeypatch.setenv("NZ_OPENBANK_MCP_BEARER_TOKEN", token)
+    assert McpHttpConfig().bearer_token.get_secret_value() == token
+
+
+@pytest.mark.parametrize("token", ["x" * 48, "abcd" * 12, "123456789" * 5])
+def test_low_entropy_bearer_token_is_rejected(
+    fake_env: None, monkeypatch: pytest.MonkeyPatch, token: str
+) -> None:
+    monkeypatch.delenv("OPENBANK_MCP_BEARER_TOKEN", raising=False)
+    monkeypatch.setenv("NZ_OPENBANK_MCP_BEARER_TOKEN", token)
+
+    with pytest.raises(ValidationError, match="low-entropy"):
+        McpHttpConfig()
+
+
+def test_hex_bearer_token_is_accepted(fake_env: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    token = "0123456789abcdef" * 4
+    monkeypatch.delenv("OPENBANK_MCP_BEARER_TOKEN", raising=False)
+    monkeypatch.setenv("NZ_OPENBANK_MCP_BEARER_TOKEN", token)
+
+    assert McpHttpConfig().bearer_token.get_secret_value() == token
 
 
 def test_short_bearer_token_allowed_in_oauth_mode(
@@ -441,7 +461,7 @@ def test_http_non_ascii_bearer_header_returns_401(fake_env: None, header: bytes)
 
     from nz_openbank_mcp.server import build_http_server
 
-    cfg = McpHttpConfig(bearer_token=SecretStr("b" * 40))
+    cfg = McpHttpConfig(bearer_token=SecretStr("bearer_0123456789abcdefghijklmnopq"))
     app = build_http_server(cfg).http_app(path=cfg.path, transport="streamable-http")
 
     with TestClient(app) as client:

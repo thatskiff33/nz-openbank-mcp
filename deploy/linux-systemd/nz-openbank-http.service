@@ -7,16 +7,16 @@ ConditionPathExists=/opt/nz-openbank-mcp/.venv/bin/nz-openbank-mcp-http
 
 [Service]
 Type=simple
-User=nz-openbank-mcp
-Group=nz-openbank-mcp
+DynamicUser=yes
 WorkingDirectory=/opt/nz-openbank-mcp
 EnvironmentFile=/etc/nz-openbank-mcp/nz-openbank.env
-Environment=NZ_OPENBANK_MCP_STATE_DIR=/var/lib/nz-openbank-mcp
-Environment=FASTMCP_HOME=/var/lib/nz-openbank-mcp/fastmcp
+EnvironmentFile=/etc/nz-openbank-mcp/nz-openbank-http.env
+Environment=NZ_OPENBANK_MCP_STATE_DIR=/var/lib/nz-openbank-http
+Environment=FASTMCP_HOME=/var/lib/nz-openbank-http/fastmcp
 ExecStart=/opt/nz-openbank-mcp/.venv/bin/nz-openbank-mcp-http
 Restart=on-failure
 RestartSec=5s
-StateDirectory=nz-openbank-mcp
+StateDirectory=nz-openbank-http
 StateDirectoryMode=0750
 UMask=0077
 NoNewPrivileges=true
@@ -32,7 +32,6 @@ ProtectKernelTunables=true
 ProtectProc=invisible
 ProcSubset=pid
 ProtectSystem=strict
-ReadWritePaths=/var/lib/nz-openbank-mcp
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 RestrictNamespaces=true
 RestrictRealtime=true

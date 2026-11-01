@@ -51,7 +51,22 @@ class StaticBearerAuthProvider(AuthProvider):
         return None
 
 
-def durable_client_storage(state_dir: Path, signing_key: str) -> AsyncKeyValue:
+class DurableOAuthStorage(FernetEncryptionWrapper):
+    """Encrypted file store whose `cull()` deletes expired entries from disk.
+
+    The file store drops an expired entry only when that key is read again, so
+    write-once entries (codes, transactions, rotated tokens) need a sweep.
+    """
+
+    def __init__(self, files: FileTreeStore, fernet: Fernet) -> None:
+        super().__init__(key_value=files, fernet=fernet, raise_on_decryption_error=False)
+        self._files = files
+
+    async def cull(self) -> None:
+        await self._files.cull()
+
+
+def durable_client_storage(state_dir: Path, signing_key: str) -> DurableOAuthStorage:
     """Encrypted on-disk store for OAuth client registrations and upstream tokens.
 
     Rotating the signing key makes existing entries undecryptable; they are read
@@ -73,11 +88,7 @@ def durable_client_storage(state_dir: Path, signing_key: str) -> AsyncKeyValue:
     encryption_key = derive_jwt_key(
         low_entropy_material=signing_key, salt="nz-openbank-mcp-oauth-storage"
     )
-    return FernetEncryptionWrapper(
-        key_value=store,
-        fernet=Fernet(key=encryption_key),
-        raise_on_decryption_error=False,
-    )
+    return DurableOAuthStorage(store, Fernet(key=encryption_key))
 
 
 class AllowlistedGoogleOAuthProvider(GoogleProvider):
@@ -134,11 +145,31 @@ class AllowlistedGoogleOAuthProvider(GoogleProvider):
         client: OAuthClientInformationFull,
         authorization_code: AuthorizationCode,
     ) -> OAuthToken:
-        """Issue connector tokens only when the Google account is allowlisted."""
+        """Issue connector tokens only when the Google account is allowlisted.
+
+        The account is checked before the proxy stores anything, so a refused
+        account leaves no upstream tokens, mappings or refresh entries at rest.
+        The check after issuing stays as a second line of defence.
+        """
+        await self._refuse_unless_allowed(authorization_code)
         oauth_token = await super().exchange_authorization_code(client, authorization_code)
         if await self.load_access_token(oauth_token.access_token) is None:
             raise TokenError("invalid_grant", "Google account is not allowed")
         return oauth_token
+
+    async def _refuse_unless_allowed(self, authorization_code: AuthorizationCode) -> None:
+        code_model = await self._code_store.get(key=authorization_code.code)
+        if code_model is None:
+            return
+        upstream_access = code_model.idp_tokens.get("access_token")
+        validated = (
+            await self._token_validator.verify_token(upstream_access)
+            if isinstance(upstream_access, str) and upstream_access
+            else None
+        )
+        if validated is None or not self._is_access_allowed(validated):
+            await self._code_store.delete(key=authorization_code.code)
+            raise TokenError("invalid_grant", "Google account is not allowed")
 
     def get_routes(self, mcp_path: str | None = None) -> list[Route]:
         """Expose the path-aware authorization-server metadata alias."""

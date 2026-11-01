@@ -31,6 +31,10 @@ ALLOW_CUSTOM_BASE_URL_VAR = "AKAHU_ALLOW_CUSTOM_BASE_URL"
 AKAHU_API_HOST = "api.akahu.io"
 MIN_BEARER_TOKEN_LENGTH = 32
 MIN_JWT_SIGNING_KEY_BYTES = 32
+# A random hex or base64 secret of the minimum length has far more distinct
+# characters than this; a repeated or patterned one does not.
+MIN_SECRET_DISTINCT_CHARS = 10
+KEYGEN_HINT = "Generate one with `openssl rand -base64 48`."
 DEFAULT_ALLOWED_REDIRECT_URIS = (
     "https://claude.ai/api/mcp/auth_callback",
     "https://claude.com/api/mcp/auth_callback",
@@ -271,6 +275,8 @@ class McpHttpConfig(_Settings):
             )
         if not all("!" <= ch <= "~" for ch in token):
             raise ValueError("mcp bearer token must be visible ASCII with no spaces")
+        if _low_diversity(token):
+            raise ValueError(f"mcp bearer token looks low-entropy. {KEYGEN_HINT}")
         return self
 
 
@@ -399,12 +405,7 @@ class McpOAuthConfig(_Settings):
                 "oauth allowlist is required for HTTP oauth mode. Set allowed users "
                 "or allowed domains."
             )
-        key = self.jwt_signing_key.get_secret_value().strip()
-        if len(key.encode("utf-8")) < MIN_JWT_SIGNING_KEY_BYTES:
-            raise ValueError(
-                f"NZ_OPENBANK_MCP_JWT_SIGNING_KEY of at least {MIN_JWT_SIGNING_KEY_BYTES} "
-                "bytes is required for HTTP oauth mode"
-            )
+        _check_signing_key(self.jwt_signing_key.get_secret_value().strip())
         if not self.state_dir or not Path(self.state_dir).is_absolute():
             raise ValueError(
                 "NZ_OPENBANK_MCP_STATE_DIR must be an absolute path for HTTP oauth mode"
@@ -441,6 +442,20 @@ class McpOAuthConfig(_Settings):
 def _split_csv_lower(value: str) -> tuple[str, ...]:
     """Split comma-separated config into lowercase non-empty entries."""
     return tuple(part.strip().lower() for part in value.split(",") if part.strip())
+
+
+def _low_diversity(secret: str) -> bool:
+    return len(set(secret)) < MIN_SECRET_DISTINCT_CHARS
+
+
+def _check_signing_key(key: str) -> None:
+    if len(key.encode("utf-8")) < MIN_JWT_SIGNING_KEY_BYTES:
+        raise ValueError(
+            f"NZ_OPENBANK_MCP_JWT_SIGNING_KEY of at least {MIN_JWT_SIGNING_KEY_BYTES} "
+            "bytes is required for HTTP oauth mode"
+        )
+    if _low_diversity(key):
+        raise ValueError(f"NZ_OPENBANK_MCP_JWT_SIGNING_KEY looks low-entropy. {KEYGEN_HINT}")
 
 
 def _validate_redirect_pattern(pattern: str) -> None:

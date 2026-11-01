@@ -13,21 +13,25 @@ preserves the read-only default and avoids public MCP exposure.
 
 ## Secret Locations
 
-The live secret file is:
+The live secret files are:
 
 ```text
 /etc/nz-openbank-mcp/nz-openbank.env
+/etc/nz-openbank-mcp/nz-openbank-http.env
 ```
 
-It contains only runtime values:
+`nz-openbank.env` is shared by both units and contains only runtime values:
 
 - `CONTROL_PLANE_TUNNEL_ID`
 - `CONTROL_PLANE_API_KEY`
 - `AKAHU_APP_TOKEN`
 - `AKAHU_USER_TOKEN`
-- for the HTTP service: `NZ_OPENBANK_MCP_GOOGLE_CLIENT_SECRET`,
-  `NZ_OPENBANK_MCP_JWT_SIGNING_KEY` or `NZ_OPENBANK_MCP_BEARER_TOKEN`
 - safety and logging settings
+
+`nz-openbank-http.env` is loaded only by `nz-openbank-http.service`, which runs
+under its own dynamic user, so the tunnel process cannot read
+`NZ_OPENBANK_MCP_GOOGLE_CLIENT_SECRET`, `NZ_OPENBANK_MCP_JWT_SIGNING_KEY` or
+`NZ_OPENBANK_MCP_BEARER_TOKEN`.
 
 The systemd unit is:
 
@@ -50,12 +54,14 @@ Set root ownership and service-group read access:
 sudo install -d -o root -g nz-openbank-mcp -m 0750 /etc/nz-openbank-mcp
 sudo chown root:nz-openbank-mcp /etc/nz-openbank-mcp/nz-openbank.env
 sudo chmod 0640 /etc/nz-openbank-mcp/nz-openbank.env
+sudo chown root:root /etc/nz-openbank-mcp/nz-openbank-http.env
+sudo chmod 0600 /etc/nz-openbank-mcp/nz-openbank-http.env
 ```
 
 Verify permissions without printing secret values:
 
 ```bash
-sudo stat -c '%U:%G %a %n' /etc/nz-openbank-mcp /etc/nz-openbank-mcp/nz-openbank.env
+sudo stat -c '%U:%G %a %n' /etc/nz-openbank-mcp /etc/nz-openbank-mcp/*.env
 sudo namei -l /etc/nz-openbank-mcp/nz-openbank.env
 ```
 
@@ -63,6 +69,7 @@ Expected pass:
 
 ```text
 root:nz-openbank-mcp 750 /etc/nz-openbank-mcp
+root:root 600 /etc/nz-openbank-mcp/nz-openbank-http.env
 root:nz-openbank-mcp 640 /etc/nz-openbank-mcp/nz-openbank.env
 ```
 
@@ -176,7 +183,7 @@ Use this when `NZ_OPENBANK_MCP_JWT_SIGNING_KEY` is exposed or intentionally
 rotated. Rotation signs every connector out and makes stored state
 undecryptable, so connectors re-register and users sign in again.
 
-`/var/lib/nz-openbank-mcp/oauth-proxy` holds client registrations, pending
+`/var/lib/nz-openbank-http/oauth-proxy` holds client registrations, pending
 authorization codes, token mappings and the upstream Google access and refresh
 tokens, all encrypted with a key derived from the signing key. Anyone holding
 the old key and a copy of that directory (including backups) can decrypt them.
@@ -189,11 +196,11 @@ the old key and a copy of that directory (including backups) can decrypt them.
 
 2. Stop `nz-openbank-http.service`.
 3. Replace only `NZ_OPENBANK_MCP_JWT_SIGNING_KEY` with `sudoedit
-   /etc/nz-openbank-mcp/nz-openbank.env`.
+   /etc/nz-openbank-mcp/nz-openbank-http.env`.
 4. Remove the old encrypted state. This is required when the key was exposed:
 
    ```bash
-   sudo rm -rf /var/lib/nz-openbank-mcp/oauth-proxy
+   sudo rm -rf /var/lib/nz-openbank-http/oauth-proxy
    ```
 
 5. If the key was exposed, also rotate the Google client secret (below) and ask
@@ -208,7 +215,8 @@ The signing key is independent of the Google client secret, so rotating the
 secret does not sign connectors out.
 
 1. In Google Cloud Console, open the OAuth client and add a new secret.
-2. Replace `NZ_OPENBANK_MCP_GOOGLE_CLIENT_SECRET` with `sudoedit`.
+2. Replace `NZ_OPENBANK_MCP_GOOGLE_CLIENT_SECRET` with `sudoedit
+   /etc/nz-openbank-mcp/nz-openbank-http.env`.
 3. Restart `nz-openbank-http.service` and confirm a connector still works.
 4. Disable and delete the old secret in Google Cloud Console.
 
