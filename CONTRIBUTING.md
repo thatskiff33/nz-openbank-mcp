@@ -3,6 +3,10 @@
 Thanks for helping. Bug reports and pull requests are welcome; for anything
 security-related, follow [SECURITY.md](https://github.com/thatskiff33/nz-openbank-mcp/blob/main/SECURITY.md)
 instead of opening a public issue.
+Everyone taking part follows the [code of conduct](https://github.com/thatskiff33/nz-openbank-mcp/blob/main/CODE_OF_CONDUCT.md).
+Questions go to [Discussions](https://github.com/thatskiff33/nz-openbank-mcp/discussions);
+see [SUPPORT.md](https://github.com/thatskiff33/nz-openbank-mcp/blob/main/SUPPORT.md). Add user-visible changes to the `Unreleased`
+section of [CHANGELOG.md](https://github.com/thatskiff33/nz-openbank-mcp/blob/main/CHANGELOG.md).
 
 ## Set up
 
