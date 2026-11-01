@@ -9,6 +9,7 @@
   <a href="https://github.com/thatskiff33/nz-openbank-mcp/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/coverage-100%25-2dd4bf" alt="Coverage 100%"></a>
   <a href="https://github.com/thatskiff33/nz-openbank-mcp/blob/main/LICENSE"><img src="https://img.shields.io/github/license/thatskiff33/nz-openbank-mcp?color=2dd4bf" alt="License Apache-2.0"></a>
   <a href="https://github.com/thatskiff33/nz-openbank-mcp/releases/latest"><img src="https://img.shields.io/github/v/release/thatskiff33/nz-openbank-mcp?color=2dd4bf&label=release" alt="Latest release"></a>
+  <a href="https://glama.ai/mcp/servers/thatskiff33/nz-openbank-mcp"><img src="https://glama.ai/mcp/servers/thatskiff33/nz-openbank-mcp/badges/score.svg" alt="Glama MCP server score"></a>
 </p>
 
 <p align="center">
