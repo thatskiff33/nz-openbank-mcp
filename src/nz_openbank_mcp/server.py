@@ -19,7 +19,7 @@ from nz_openbank_mcp.tools import accounts, identity, transactions
 
 logger = logging.getLogger(__name__)
 _LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
-_SENSITIVE_THIRD_PARTY_LOGGERS = ("httpx", "httpcore", "uvicorn.access")
+_SENSITIVE_THIRD_PARTY_LOGGERS = ("httpx", "httpcore", "httpx2", "httpcore2", "uvicorn.access")
 
 SERVER_INSTRUCTIONS = (
     "Use Akahu tools only for the connected user's New Zealand banking data. "

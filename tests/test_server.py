@@ -82,18 +82,22 @@ async def test_all_tools_have_apps_sdk_titles_and_annotations(fake_env: None) ->
         assert tool.annotations is not None, f"{tool.name} is missing annotations"
 
         annotations = tool.annotations
+        wire = annotations.model_dump(by_alias=True, exclude_none=True)
         if tool.name in expected_write_tools:
-            assert annotations.readOnlyHint is False
-            assert annotations.openWorldHint is False
-            assert annotations.destructiveHint is False
+            assert annotations.read_only_hint is False
+            assert annotations.open_world_hint is False
+            assert annotations.destructive_hint is False
             if tool.name in idempotent_write_tools:
-                assert annotations.idempotentHint is True
+                assert annotations.idempotent_hint is True
+                assert wire["idempotentHint"] is True
             else:
-                assert annotations.idempotentHint is None
+                assert annotations.idempotent_hint is None
+            assert wire["readOnlyHint"] is False
         else:
-            assert annotations.readOnlyHint is True
-            assert annotations.openWorldHint is None
-            assert annotations.destructiveHint is None
+            assert annotations.read_only_hint is True
+            assert annotations.open_world_hint is None
+            assert annotations.destructive_hint is None
+            assert wire == {"readOnlyHint": True}
 
 
 async def test_http_server_exposes_all_14_tools_with_auth(fake_env: None) -> None:
@@ -495,7 +499,7 @@ def test_configure_logging_suppresses_sensitive_http_client_logs() -> None:
 
     old_levels = {
         logger_name: logging.getLogger(logger_name).level
-        for logger_name in ("httpx", "httpcore", "uvicorn.access")
+        for logger_name in ("httpx", "httpcore", "httpx2", "httpcore2", "uvicorn.access")
     }
     try:
         for logger_name in old_levels:
@@ -503,9 +507,8 @@ def test_configure_logging_suppresses_sensitive_http_client_logs() -> None:
 
         configure_logging("INFO")
 
-        assert logging.getLogger("httpx").level == logging.WARNING
-        assert logging.getLogger("httpcore").level == logging.WARNING
-        assert logging.getLogger("uvicorn.access").level == logging.WARNING
+        for logger_name in old_levels:
+            assert logging.getLogger(logger_name).level == logging.WARNING
     finally:
         for logger_name, level in old_levels.items():
             logging.getLogger(logger_name).setLevel(level)

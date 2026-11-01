@@ -23,6 +23,8 @@ uv run pytest tests/test_accounts.py::test_list_accounts_returns_masked  # one t
 uv run pytest -k "currency"            # filter by name
 uv run ruff check .                    # lint (must be clean)
 uv run mypy src                        # strict-mode type check (must be clean)
+uv export --frozen --no-emit-project --all-extras --format requirements-txt \
+  | uv run pip-audit --strict --disable-pip --require-hashes -r /dev/stdin  # audit the lock
 uv build                               # sdist + wheel into dist/
 uv run nz-openbank-mcp                    # run server over stdio from local checkout
 uv run fastmcp dev src/nz_openbank_mcp/server.py  # FastMCP inspector
@@ -30,7 +32,12 @@ uv run fastmcp dev src/nz_openbank_mcp/server.py  # FastMCP inspector
 
 The pytest config (`pyproject.toml [tool.pytest.ini_options]`) enforces
 `--cov-fail-under=100` on **line AND branch** coverage. Any patch that drops
-coverage below 100% fails the build. Mypy runs in `strict` mode.
+coverage below 100% fails the build. Mypy runs in `strict` mode. A
+`DeprecationWarning` raised from `nz_openbank_mcp` or `tests` fails the suite.
+
+Python is 3.14+. Runtime dependencies carry major-version caps because `uvx`
+ignores `uv.lock` and resolves fresh on every launch; `sse-starlette!=3.4.6`
+excludes a known-bad transitive release.
 
 ## Architecture
 
@@ -69,6 +76,15 @@ The decorator (in `safety.py`) enforces:
    or cancel raises `ElicitationDeclinedError`.
 3. **Automation bypass.** If the decorator was called with `automatable=True`
    AND `AKAHU_AUTOMATION_BYPASS=true`, layer 2 is skipped (still logs at INFO).
+
+Layer 2 depends on the negotiated MCP protocol. Handshake-era connections
+(2025-11-25 and earlier) get a server-initiated `ctx.elicit()`. 2026-07-28
+connections have no server-initiated requests, so the tool returns an
+`InputRequiredResult` with a single-use nonce in `request_state` and runs only
+when the client retries with an accept answer and that nonce. Mid-call value
+prompts (`elicit_value`) fail on 2026-07-28 connections; pass the value as an
+argument instead. `tests/test_consent_e2e.py` covers both eras through a real
+`fastmcp.Client`.
 
 `bypass_eligible_tools()` is the runtime registry consulted by the startup
 banner. `AKAHU_READ_ONLY=true` + `AKAHU_AUTOMATION_BYPASS=true` is rejected at
