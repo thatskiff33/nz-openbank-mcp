@@ -234,6 +234,15 @@ def test_shown_refuses_values_too_long_to_show() -> None:
         shown("x" * (MAX_SHOWN_CHARS + 1))
 
 
+def test_shown_refuses_non_text() -> None:
+    from fastmcp.exceptions import ToolError
+
+    from nz_openbank_mcp.safety import shown
+
+    with pytest.raises(ToolError, match="Expected text, got int"):
+        shown(5)  # type: ignore[arg-type]
+
+
 def test_describe_request_lists_values_and_omits_empty() -> None:
     from nz_openbank_mcp.safety import describe_request
 

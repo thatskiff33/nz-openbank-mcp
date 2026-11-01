@@ -17,13 +17,16 @@ connections, which have no server-initiated requests, the tool instead returns
 an InputRequiredResult and proceeds only when the client retries with an
 accept answer and the single-use nonce issued for that ask. The SDK seals
 request_state and binds it to the tool name and arguments, so a nonce cannot
-be forged or replayed against a different call.
+be forged or replayed against a different call. The nonce is also tied to the
+exact prompt text, so a retry that would send anything other than what the
+user approved is asked again.
 
 `bypass_eligible_tools()` returns the names registered with automatable=True.
 """
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import secrets
 import time
@@ -63,7 +66,7 @@ _STATE_PREFIX = "consent:"
 _PENDING_TTL_SECONDS = 600.0
 # Bounds memory if a client asks repeatedly without ever answering.
 _PENDING_MAX = 256
-_PENDING: dict[str, float] = {}
+_PENDING: dict[str, tuple[float, str]] = {}
 
 MAX_SHOWN_CHARS = 1000
 _ESCAPES = {'"': '\\"', "\\": "\\\\", "\n": "\\n", "\r": "\\r", "\t": "\\t"}
@@ -109,6 +112,8 @@ class _Confirmation(BaseModel):
 
 def shown(value: str) -> str:
     """`value` as one double-quoted literal, safe to place in a consent prompt."""
+    if not isinstance(value, str):
+        raise ToolError(f"Expected text, got {type(value).__name__}.")
     if len(value) > MAX_SHOWN_CHARS:
         raise ToolError(
             f"A value is {len(value)} characters long; the limit is {MAX_SHOWN_CHARS} "
@@ -146,22 +151,29 @@ def _is_modern_protocol(ctx: Any) -> bool:
     return isinstance(version, str) and version in MODERN_PROTOCOL_VERSIONS
 
 
-def _issue_nonce() -> str:
+def _digest(message: str) -> str:
+    return hashlib.sha256(message.encode("utf-8", "surrogatepass")).hexdigest()
+
+
+def _issue_nonce(message: str) -> str:
     now = time.monotonic()
-    for stale in [n for n, exp in _PENDING.items() if exp <= now]:
+    for stale in [n for n, (exp, _) in _PENDING.items() if exp <= now]:
         del _PENDING[stale]
     while len(_PENDING) >= _PENDING_MAX:
         del _PENDING[next(iter(_PENDING))]
     nonce = secrets.token_urlsafe(16)
-    _PENDING[nonce] = now + _PENDING_TTL_SECONDS
+    _PENDING[nonce] = (now + _PENDING_TTL_SECONDS, _digest(message))
     return nonce
 
 
-def _consume_nonce(state: str | None) -> bool:
+def _consume_nonce(state: str | None, message: str) -> bool:
     if state is None or not state.startswith(_STATE_PREFIX):
         return False
-    expiry = _PENDING.pop(state.removeprefix(_STATE_PREFIX), None)
-    return expiry is not None and expiry > time.monotonic()
+    entry = _PENDING.pop(state.removeprefix(_STATE_PREFIX), None)
+    if entry is None:
+        return False
+    expiry, digest = entry
+    return expiry > time.monotonic() and secrets.compare_digest(digest, _digest(message))
 
 
 def _consent_request(message: str) -> InputRequiredResult:
@@ -171,7 +183,7 @@ def _consent_request(message: str) -> InputRequiredResult:
     )
     return InputRequiredResult(
         input_requests={_CONSENT_KEY: ElicitRequest(params=params)},
-        request_state=_STATE_PREFIX + _issue_nonce(),
+        request_state=_STATE_PREFIX + _issue_nonce(message),
     )
 
 
@@ -193,7 +205,7 @@ async def confirm_write(ctx: Any, action_description: str) -> InputRequiredResul
     """
     message = f"Confirm: {action_description}"
     if _is_modern_protocol(ctx):
-        if not _consume_nonce(ctx.request_state):
+        if not _consume_nonce(ctx.request_state, message):
             return _consent_request(message)
         _check_consent_response(ctx, action_description)
         return None

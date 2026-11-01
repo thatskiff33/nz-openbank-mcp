@@ -90,7 +90,8 @@ which applies, in order:
    characters escaped; over `MAX_SHOWN_CHARS` is refused, never cut). On protocol 2025-11-25 and earlier this is a
    server-initiated `ctx.elicit()`. On 2026-07-28 the tool returns an
    `InputRequiredResult` with a single-use nonce in `request_state` and runs
-   when the client retries with an accept and that nonce. Mid-call value
+   when the client retries with an accept and that nonce. The nonce is bound
+   to the prompt text; a retry that renders different text is asked again. Mid-call value
    prompts (`elicit_value`) do not work on 2026-07-28; take values as
    arguments. Decline or cancel raises `ElicitationDeclinedError`.
 4. `automatable=True` plus `AKAHU_AUTOMATION_BYPASS=true` skips step 3 and
