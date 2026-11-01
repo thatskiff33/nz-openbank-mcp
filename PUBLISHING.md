@@ -93,7 +93,8 @@ Jobs:
   `ci.yml` push run. It waits up to about 25 minutes if that run is still in
   progress. Tag the merge commit itself; a commit whose push run was skipped
   cannot be released.
-- `build` runs `uv build` and asserts the pyproject version matches the tag.
+- `build` asserts the pyproject version matches the tag, runs
+  `scripts/check_packaging.py`, then `uv build`.
 - `publish-testpypi` (dispatch only) uploads to TestPyPI.
 - `build-mcpb` packs `nz-openbank-mcp-X.Y.Z.mcpb` with a pinned
   `@anthropic-ai/mcpb`, asserts the manifest version matches the tag, and

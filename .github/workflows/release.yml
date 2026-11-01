@@ -107,6 +107,9 @@ jobs:
           fi
           echo "Version $pyproject_version matches tag $GITHUB_REF_NAME"
 
+      - name: manifests, launch pins and version lockstep
+        run: uv run --no-project python scripts/check_packaging.py
+
       - name: build sdist + wheel
         run: uv build
 
