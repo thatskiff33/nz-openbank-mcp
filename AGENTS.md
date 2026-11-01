@@ -1,0 +1,204 @@
+# AGENTS.md
+
+Working notes for coding agents in this repository.
+
+## Project in one paragraph
+
+`nz-openbank-mcp` is an MCP server that exposes 14 tools over Akahu
+Personal App endpoints (NZ open finance). It runs over stdio by default, with
+an optional authenticated Streamable HTTP entrypoint (`nz-openbank-mcp-http`).
+Tools are primitives: they fetch, format and mask data, or trigger a small set
+of writes. Spending analysis, categorising and forecasting belong to the
+calling model, so do not add tools for them.
+
+## Checks every change must pass
+
+```bash
+uv sync --extra dev
+uv run pytest                      # 100% line and branch coverage, enforced
+uv run pytest tests/test_accounts.py -k masked   # narrow a run
+uv run ruff check . && uv run ruff format --check .
+uv run mypy src                    # strict
+uv export --frozen --no-emit-project --all-extras --format requirements-txt \
+  | uv run pip-audit --strict --disable-pip --require-hashes -r /dev/stdin
+uv run --no-project python scripts/sync_plugin_manifests.py --check
+uv run --no-project python scripts/check_packaging.py
+uv run --no-project python scripts/check_md_links.py
+uvx --from actionlint-py==1.7.12.25 actionlint && uvx zizmor==1.31.1 --offline .github/
+```
+
+Other useful commands: `uv run nz-openbank-mcp` (stdio server from the
+checkout), `FASTMCP_ENV_FILE=/dev/null uv run fastmcp dev
+src/nz_openbank_mcp/server.py` (inspector), `uv build`.
+
+A `DeprecationWarning` raised from `nz_openbank_mcp` or `tests` fails the
+suite. Python is 3.14+; CI also tests 3.15. Runtime dependencies are capped
+at the next major version because `uvx` resolves fresh on each launch and
+ignores `uv.lock`.
+
+## Code map
+
+| Path | Role |
+| --- | --- |
+| `src/nz_openbank_mcp/server.py` | Builds the root server, mounts `acct`, `txn` and `id`, prints the safety banner |
+| `src/nz_openbank_mcp/tools/accounts.py` | `acct_*`: 4 reads, 2 writes (refreshes) |
+| `src/nz_openbank_mcp/tools/transactions.py` | `txn_*`: 5 reads, 1 write (support ticket) |
+| `src/nz_openbank_mcp/tools/identity.py` | `id_*`: 1 read, 1 write (name check) |
+| `src/nz_openbank_mcp/client.py` | `AkahuClient`: async httpx, both auth headers, 3 attempts with backoff |
+| `src/nz_openbank_mcp/models.py` | Pydantic models; aliases map Akahu's `_id` and `_account` |
+| `src/nz_openbank_mcp/config.py` | `AkahuConfig` (`AKAHU_*` settings) |
+| `src/nz_openbank_mcp/deps.py` | Shared client (`get_client`, `aclose_client`) |
+| `src/nz_openbank_mcp/safety.py` | `@require_write_consent` |
+| `src/nz_openbank_mcp/formatting.py` | `format_money`, `mask_account`, `parse_iso_date` |
+
+A sub-server's tools are exposed as `<namespace>_<function>`. New tools go in
+an existing `tools/` module with `@server.tool`; a new group is a new module
+plus one `mcp.mount(...)` in `server.py`.
+
+## Rules for tools
+
+**Docstrings feed the tool schema.** FastMCP turns the `Args:` block into
+parameter descriptions and drops any `Returns:` block from the description
+when `Args:` is present. Describe the output in the paragraph between the
+summary line and `Args:`:
+
+```python
+"""Summary line.
+
+Returns {"key": ...} and when to use it.
+
+Args:
+    foo: ...
+"""
+```
+
+Print what hosts will see with:
+`uv run python -c 'import asyncio; from nz_openbank_mcp.server import build_server; m=build_server(); [print(t.name, ":", t.description) for t in asyncio.run(m.list_tools())]'`
+
+**Writes go through `@require_write_consent(prompt, automatable=...)`,**
+which applies, in order:
+
+1. `AKAHU_READ_ONLY=true` (the default) raises `ReadOnlyError` before any
+   request.
+2. The user confirms each call. On protocol 2025-11-25 and earlier this is a
+   server-initiated `ctx.elicit()`. On 2026-07-28 the tool returns an
+   `InputRequiredResult` with a single-use nonce in `request_state` and runs
+   when the client retries with an accept and that nonce. Mid-call value
+   prompts (`elicit_value`) do not work on 2026-07-28; take values as
+   arguments. Decline or cancel raises `ElicitationDeclinedError`.
+3. `automatable=True` plus `AKAHU_AUTOMATION_BYPASS=true` skips step 2 and
+   logs at INFO. Config validation rejects the bypass while read-only is on.
+
+Default to `automatable=False`; only idempotent, rate-limited actions with no
+third-party effect qualify. `bypass_eligible_tools()` feeds the startup
+banner.
+
+**Data handling:**
+
+- Every account number shown goes through `mask_account`.
+- `format_money` renders NZD as `$1,234.56` and other codes as
+  `USD 1,234.56`; an empty code means NZD.
+- Akahu transactions have no currency field, so `txn_*` tools format in NZD;
+  callers needing the real currency use `acct_get_account`.
+- Tokens are `SecretStr`; call `get_secret_value()` only where headers are
+  built. Never log tokens or response bodies.
+
+## Akahu limits
+
+- Personal App tokens get 403 from app-scoped endpoints: `/categories`,
+  `/categories/{id}`, `/connections`, `/connections/{id}`, `/parties`,
+  `/parties/{code}` and `/identity/{id}/verify-name`. Payments and webhooks
+  are unavailable too. Do not add tools for any of them.
+- Every request sends `Authorization: Bearer <user_token>` and
+  `X-Akahu-Id: <app_token>`; `AkahuClient` handles both.
+
+## Configuration
+
+Settings come from the process environment. An env file loads only when
+`AKAHU_ENV_FILE` gives an absolute path, and no settings class reads a
+working-directory `.env`. `AKAHU_BASE_URL` must stay on `https://api.akahu.io`
+unless `AKAHU_ALLOW_CUSTOM_BASE_URL=true` is a real environment variable; the
+flag is ignored in files.
+
+## Tests
+
+- `tests/conftest.py` env fixtures: `fake_env` (read-only), `writable_env`
+  (writes elicit), `bypass_env` (automatable writes skip the prompt).
+- `ctx_factory()` builds a mock `Context` whose `elicit()` returns accept,
+  decline or cancel.
+- `respx_mock` intercepts Akahu HTTP; `load_fixture("name")` reads
+  `tests/fixtures/name.json`. Fixtures are synthetic.
+- Tool tests usually patch `deps.get_client` with a `MagicMock` holding
+  `AsyncMock` methods (see `_fake_client()` in `tests/test_accounts.py`).
+- `tests/test_consent_e2e.py` drives consent through a real `fastmcp.Client`
+  on both protocol eras.
+
+A new tool needs the happy path and empty or missing data. A new write also
+needs read-only refusal and all three consent outcomes.
+
+## Packaging
+
+One codebase ships as a PyPI package, a plugin for Claude Code, Codex, Cursor
+and Grok Build (`plugin/`, with this repo as each host's marketplace), and a
+Claude Desktop Extension (`mcpb/`).
+
+All host manifests are generated from `plugin/plugin.base.toml` by
+`scripts/sync_plugin_manifests.py`, which takes the version from
+`pyproject.toml`. Edit the base file or the generator, regenerate, and commit
+the output; CI fails on drift.
+
+| Host | Manifest | Launch spec | Marketplace |
+| --- | --- | --- | --- |
+| Claude Code | `plugin/.claude-plugin/plugin.json` | `plugin/.mcp.json` | `.claude-plugin/marketplace.json` |
+| Codex | `plugin/.codex-plugin/plugin.json` | `plugin/codex-mcp.json` | `.agents/plugins/marketplace.json` |
+| Cursor | `plugin/.cursor-plugin/plugin.json` | inline `mcpServers` | `.cursor-plugin/marketplace.json` |
+| Grok Build | `plugin/.grok-plugin/plugin.json` | `plugin/grok-mcp.json` | `.grok-plugin/marketplace.json` |
+| Claude Desktop | `mcpb/manifest.json` | `server.mcp_config` | Release asset |
+
+How each host gets credentials, which constrains the launch specs:
+
+- Claude Code and the Desktop Extension prompt at install, keep values in the
+  OS keychain and substitute `${user_config.KEY}`. The plugin key is
+  `userConfig`; the `.mcpb` key is `user_config`.
+- Codex forwards the variables listed in `env_vars` from its own environment
+  and has no secret prompt.
+- Cursor fills `${VAR}` from plugin `variables`, then its environment. It does
+  not apply schema defaults and leaves an unset `${VAR}` literal, so the spec
+  uses `${VAR:-default}`.
+- Grok Build expands `${VAR:-default}` from its environment and ignores inline
+  `mcpServers`, so its manifest points at a file.
+
+Layout constraints:
+
+- Never add `plugin/plugin.json` or `plugin/mcp.json`; Codex, Cursor and
+  Grok would load them ahead of the per-host manifests.
+- Never add a root `.mcp.json`; `.gitignore` blocks it with `/.mcp.json`.
+- The Cursor manifest has no `displayName`, because Cursor names the server
+  `plugin-<displayName or name>-akahu`.
+
+`scripts/check_packaging.py` checks the cross-host rules: pinned launch,
+placeholder-only env, safe defaults, exact Codex variable list, every
+marketplace pointing at `plugin/`, and version lockstep.
+
+## CI and releases
+
+`ci.yml` runs on PRs, pushes to `main`, weekly and on dispatch. PRs run only
+the jobs their paths touch; other triggers run everything. `ci-ok` is the
+single required check. Actions are pinned to commit SHAs, and Dependabot
+proposes weekly grouped updates.
+
+To release: bump `version` in `pyproject.toml` and `__version__` in
+`src/nz_openbank_mcp/__init__.py`, regenerate the manifests, merge, tag the
+merge commit `vX.Y.Z`, run `gh workflow run release.yml --ref vX.Y.Z` for the
+TestPyPI dry run, then publish the GitHub Release and approve the `pypi`
+environment. `release.yml` builds only a tag whose commit is on `main` with a
+green `ci.yml` push run. `PUBLISHING.md` has the full steps.
+
+## Writing style
+
+- No emojis and no em dashes in code, comments, commits or docs.
+- State what was done and checked; do not claim success that was not verified.
+- Comments explain why, and most code needs none.
+- When asked to review, report findings before changing anything.
+- Docs describe what something does and how to use it. Leave out decision
+  history, audit trails and roadmaps.
