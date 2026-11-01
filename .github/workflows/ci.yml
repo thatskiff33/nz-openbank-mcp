@@ -147,15 +147,21 @@ jobs:
       - run: uv run mypy src
 
   test:
-    name: test (${{ matrix.python }})
+    name: test (${{ matrix.os }}, ${{ matrix.python }})
     needs: changes
     if: needs.changes.outputs.python == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
         python: ["3.14", "3.15"]
+        exclude:
+          - os: macos-latest
+            python: "3.15"
+          - os: windows-latest
+            python: "3.15"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -169,11 +175,13 @@ jobs:
           cache-dependency-glob: uv.lock
           save-cache: ${{ github.event_name != 'pull_request' }}
       - run: uv sync --locked --extra dev
+      # POSIX-only branches (file mode checks) cannot be covered on Windows,
+      # so the coverage gate runs on one Linux job.
       - name: pytest with 100% coverage gate
-        if: matrix.python == '3.14'
+        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.14'
         run: uv run pytest
       - name: pytest
-        if: matrix.python != '3.14'
+        if: matrix.os != 'ubuntu-latest' || matrix.python != '3.14'
         run: uv run pytest --no-cov
 
   audit:
