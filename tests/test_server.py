@@ -12,6 +12,8 @@ from key_value.aio.stores.memory import MemoryStore
 from pydantic import SecretStr
 from starlette.testclient import TestClient
 
+from tests.conftest import STATE_DIR
+
 BEARER = "http_token_test_0123456789abcdef0123"
 SIGNING_KEY = "jwt_signing_key_test_0123456789abcdef"
 
@@ -25,7 +27,7 @@ def _oauth_config() -> Any:
         public_base_url="https://mcp.example.com/openbank-mcp",
         allowed_users="owner@example.com",
         jwt_signing_key=SIGNING_KEY,
-        state_dir="/var/lib/nz-openbank-mcp",
+        state_dir=STATE_DIR,
     )
 
 
@@ -149,7 +151,7 @@ def test_http_server_oauth_mode_loads_oauth_env(
     )
     monkeypatch.setenv("NZ_OPENBANK_MCP_ALLOWED_USERS", "owner@example.com")
     monkeypatch.setenv("NZ_OPENBANK_MCP_JWT_SIGNING_KEY", SIGNING_KEY)
-    monkeypatch.setenv("NZ_OPENBANK_MCP_STATE_DIR", "/var/lib/nz-openbank-mcp")
+    monkeypatch.setenv("NZ_OPENBANK_MCP_STATE_DIR", STATE_DIR)
 
     mcp = build_http_server(
         McpHttpConfig(auth_mode="oauth"),
