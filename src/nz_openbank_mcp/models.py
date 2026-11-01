@@ -119,6 +119,8 @@ class PendingTransaction(_Base):
     amount: float
     type: str
     updated_at: datetime | None = None
+    merchant: Merchant | None = None
+    category: Category | None = None
     meta: TransactionMeta = Field(default_factory=TransactionMeta)
 
 

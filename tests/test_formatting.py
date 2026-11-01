@@ -114,7 +114,7 @@ def test_mask_account_fails_closed_on_other_formats(raw: str, masked: str) -> No
     [
         (datetime(2026, 10, 17, 11, 0, tzinfo=UTC), "2026-10-18"),
         (datetime(2026, 6, 17, 12, 0, tzinfo=UTC), "2026-06-18"),
-        (datetime(2026, 6, 17, 11, 59), "2026-06-17"),  # naive is treated as UTC
+        (datetime(2026, 6, 17, 12, 0), "2026-06-18"),  # naive is UTC, not NZ local
     ],
 )
 def test_local_date_uses_nz_calendar(stamp: datetime, expected: str) -> None:
@@ -130,7 +130,12 @@ def test_local_date_uses_nz_calendar(stamp: datetime, expected: str) -> None:
         ("2026-10-18", True, "2026-10-18T10:59:59.999Z"),
         ("2026-06-18", False, "2026-06-17T11:59:59.999Z"),
         (" 2026-06-18 ", True, "2026-06-18T11:59:59.999Z"),
-        ("2026-04-05", True, "2026-04-05T11:59:59.999Z"),  # day DST ends
+        ("2026-04-05", False, "2026-04-04T10:59:59.999Z"),  # day NZDT ends
+        ("2026-04-05", True, "2026-04-05T11:59:59.999Z"),
+        ("2026-09-27", False, "2026-09-26T11:59:59.999Z"),  # day NZDT starts
+        ("2026-09-27", True, "2026-09-27T10:59:59.999Z"),
+        ("", False, None),
+        ("   ", True, None),
         ("2026-05-01T00:00:00Z", False, "2026-05-01T00:00:00Z"),
         (None, True, None),
     ],
@@ -148,12 +153,40 @@ def test_akahu_bound_rejects_impossible_date() -> None:
         akahu_bound("2026-02-30", end=False)
 
 
-def test_nz_today_is_a_date() -> None:
-    from datetime import date
+def test_nz_today_uses_nz_clock(monkeypatch: pytest.MonkeyPatch) -> None:
+    from datetime import date, tzinfo
 
-    from nz_openbank_mcp.formatting import nz_today
+    from nz_openbank_mcp import formatting
 
-    assert isinstance(nz_today(), date)
+    class Frozen(datetime):
+        @classmethod
+        def now(cls, tz: tzinfo | None = None) -> Frozen:
+            instant = cls(2026, 10, 17, 11, 30, tzinfo=UTC)  # 12:30am NZDT on the 18th
+            return instant.astimezone(tz)
+
+    monkeypatch.setattr(formatting, "datetime", Frozen)
+    assert formatting.nz_today() == date(2026, 10, 18)
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("2026-10-18", "2026-10-18"),
+        (" 2026-10-18 ", "2026-10-18"),
+        ("2026-10-17T11:00:00Z", "2026-10-18"),
+        ("2026-10-18T08:00:00+13:00", "2026-10-18"),
+    ],
+)
+def test_nz_day(value: str, expected: str) -> None:
+    from nz_openbank_mcp.formatting import nz_day
+
+    assert nz_day(value).isoformat() == expected
+
+
+def test_format_money_unknown_currency_is_bare_number() -> None:
+    from nz_openbank_mcp.formatting import format_money
+
+    assert format_money(-1234.5, None) == "-1,234.50"
 
 
 def test_mask_account_none_returns_empty() -> None:

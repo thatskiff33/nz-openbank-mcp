@@ -15,11 +15,12 @@ _DATE_ONLY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 NZ_TZ = ZoneInfo("Pacific/Auckland")
 
 
-def format_money(amount: float | int | Decimal, currency: str = "NZD") -> str:
+def format_money(amount: float | int | Decimal, currency: str | None = "NZD") -> str:
     """Format a numeric amount as a currency string.
 
     NZD uses the dollar sign; any other ISO 4217 code is used as a verbatim
-    prefix. Empty/missing currency falls back to NZD.
+    prefix. An empty code falls back to NZD; None (currency unknown) gives a
+    bare number.
 
     >>> format_money(1234.56)
     '$1,234.56'
@@ -35,6 +36,8 @@ def format_money(amount: float | int | Decimal, currency: str = "NZD") -> str:
     absolute = abs(quantised)
     integer_part, _, fractional = format(absolute, "f").partition(".")
     with_commas = f"{int(integer_part):,}"
+    if currency is None:
+        return f"{sign}{with_commas}.{fractional}"
     if currency == "NZD" or not currency:
         return f"{sign}${with_commas}.{fractional}"
     return f"{sign}{currency} {with_commas}.{fractional}"
@@ -75,16 +78,25 @@ def nz_today() -> date:
     return datetime.now(NZ_TZ).date()
 
 
+def nz_day(value: str) -> date:
+    """NZ calendar day named by a YYYY-MM-DD string or an ISO 8601 timestamp."""
+    text = value.strip()
+    if _DATE_ONLY_RE.match(text):
+        return date.fromisoformat(text)
+    return date.fromisoformat(local_date(parse_iso_date(text)))
+
+
 def akahu_bound(value: str | None, *, end: bool) -> str | None:
     """Translate a date filter into an Akahu `start`/`end` query value.
 
     A bare YYYY-MM-DD is an NZ calendar day, inclusive at both ends. Akahu's
     `start` is exclusive and `end` inclusive, so both become the instant just
-    before the relevant NZ midnight, in UTC. Anything else passes through.
+    before the relevant NZ midnight, in UTC. Blank means no bound. Anything
+    else passes through; Akahu reads a timestamp without an offset as UTC.
     """
-    if value is None:
+    text = (value or "").strip()
+    if not text:
         return None
-    text = value.strip()
     if not _DATE_ONLY_RE.match(text):
         return text
     day = date.fromisoformat(text)

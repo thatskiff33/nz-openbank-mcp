@@ -186,8 +186,8 @@ async def test_get_transactions_handles_no_merchant_or_category(
     result = await get_transactions()
     assert result["transactions"][0]["merchant"] is None
     assert result["transactions"][0]["category"] is None
-    assert result["transactions"][0]["amount"] == "-$10.00"
-    assert result["transactions"][0]["currency"] == "NZD"
+    assert result["transactions"][0]["amount"] == "-10.00"
+    assert result["transactions"][0]["currency"] is None
 
 
 # ---------- get_transaction ----------
@@ -479,6 +479,8 @@ async def test_get_pending_transactions(fake_env: None, monkeypatch: pytest.Monk
             "amount_raw": -5.5,
             "currency": "NZD",
             "type": "CREDIT CARD",
+            "merchant": None,
+            "category": None,
             "pending": True,
         },
         {
@@ -489,6 +491,8 @@ async def test_get_pending_transactions(fake_env: None, monkeypatch: pytest.Monk
             "amount_raw": 20.0,
             "currency": "NZD",
             "type": "TRANSFER",
+            "merchant": None,
+            "category": None,
             "pending": True,
         },
     ]
@@ -535,6 +539,10 @@ def usd_client(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     client.list_accounts = AsyncMock(return_value=[*_fake_accounts(), _usd_account()])
     client.iter_transactions = MagicMock(side_effect=lambda **_: _async_iter([usd]))
     client.get_transaction = AsyncMock(return_value=usd)
+    client.get_transactions_by_ids = AsyncMock(return_value=[usd])
+    client.iter_account_transactions = MagicMock(
+        side_effect=lambda _account_id, **_: _async_iter([usd])
+    )
     client.get_pending_transactions = AsyncMock(
         return_value=[
             PendingTransaction.model_validate(
@@ -553,6 +561,7 @@ async def test_foreign_currency_account_renders_in_its_currency(
         get_pending_transactions,
         get_transaction,
         get_transactions,
+        get_transactions_by_ids,
         search_transactions,
     )
 
@@ -562,6 +571,10 @@ async def test_foreign_currency_account_renders_in_its_currency(
     assert (await get_transaction(transaction_id="txn_usd"))["amount"] == "-USD 9.99"
     pending = (await get_pending_transactions())["transactions"][0]
     assert (pending["amount"], pending["currency"]) == ("-USD 5.50", "USD")
+    by_ids = (await get_transactions_by_ids(ids=["txn_usd"]))["transactions"][0]
+    assert by_ids["amount"] == "-USD 9.99"
+    scoped = (await get_transactions(account_id="acc_usd_003"))["transactions"][0]
+    assert scoped["amount"] == "-USD 9.99"
 
 
 @pytest.mark.parametrize(
@@ -605,8 +618,41 @@ async def test_search_defaults_to_last_90_nz_days(
 
     monkeypatch.setattr(transactions, "nz_today", lambda: date(2026, 11, 1))
     await search_transactions(query="x")
+    # 90 NZ days, 2026-08-04 to 2026-11-01 inclusive.
     patched_client.iter_transactions.assert_called_once_with(
-        start="2026-08-02T11:59:59.999Z", end=None
+        start="2026-08-03T11:59:59.999Z", end=None
+    )
+
+
+@pytest.mark.parametrize("blank", ["", "   "])
+async def test_search_blank_start_still_uses_default_window(
+    fake_env: None, patched_client: MagicMock, monkeypatch: pytest.MonkeyPatch, blank: str
+) -> None:
+    from datetime import date
+
+    from nz_openbank_mcp.tools import transactions
+    from nz_openbank_mcp.tools.transactions import search_transactions
+
+    monkeypatch.setattr(transactions, "nz_today", lambda: date(2026, 11, 1))
+    await search_transactions(query="x", start_date=blank, end_date=blank)
+    patched_client.iter_transactions.assert_called_once_with(
+        start="2026-08-03T11:59:59.999Z", end=None
+    )
+
+
+@pytest.mark.parametrize(
+    "end_date", ["2025-12-31", "2025-12-31T05:00:00Z", "2025-12-31T10:00:00+13:00"]
+)
+async def test_search_window_ends_at_end_date(
+    fake_env: None, patched_client: MagicMock, end_date: str
+) -> None:
+    from nz_openbank_mcp.formatting import akahu_bound
+    from nz_openbank_mcp.tools.transactions import search_transactions
+
+    await search_transactions(query="x", end_date=end_date)
+    # 90 NZ days, 2025-10-03 to 2025-12-31 inclusive.
+    patched_client.iter_transactions.assert_called_once_with(
+        start="2025-10-02T10:59:59.999Z", end=akahu_bound(end_date, end=True)
     )
 
 
@@ -634,7 +680,28 @@ async def test_limit_out_of_range_is_rejected(fake_env: None, patched_client: Ma
     from nz_openbank_mcp.server import build_server
 
     async with Client(build_server()) as c:
-        for bad in (0, 501):
+        for bad in (0, 501, "5", True):
             with pytest.raises(ToolError, match="limit"):
                 await c.call_tool("txn_get_transactions", {"limit": bad})
     patched_client.iter_transactions.assert_not_called()
+
+
+async def test_pending_keeps_enrichment_when_present(
+    fake_env: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from nz_openbank_mcp import deps
+    from nz_openbank_mcp.tools.transactions import get_pending_transactions
+
+    item = {
+        **load_fixture("pending_transactions")["items"][0],
+        "merchant": {"_id": "merchant_demo", "name": "Demo Cafe"},
+        "category": {"_id": "cat_demo", "name": "Cafes"},
+    }
+    client = MagicMock()
+    client.get_pending_transactions = AsyncMock(
+        return_value=[PendingTransaction.model_validate(item)]
+    )
+    client.list_accounts = AsyncMock(return_value=_fake_accounts())
+    monkeypatch.setattr(deps, "get_client", lambda: client)
+    entry = (await get_pending_transactions())["transactions"][0]
+    assert (entry["merchant"], entry["category"]) == ("Demo Cafe", "Cafes")

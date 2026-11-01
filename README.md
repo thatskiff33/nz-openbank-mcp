@@ -27,7 +27,7 @@ off until you turn writes on.
 | `txn_get_transaction` | | One transaction by id |
 | `txn_get_transactions_by_ids` | | Several transactions in one request |
 | `txn_get_pending_transactions` | | Unsettled transactions across all accounts |
-| `txn_search_transactions` | | Case-insensitive text search over description and merchant, last 90 days unless given a start date (default 50) |
+| `txn_search_transactions` | | Case-insensitive text search over description and merchant; without a start date, the 90 days up to the end date or today (default 50) |
 | `id_get_me` | | The Akahu user's profile |
 | `acct_refresh_all_accounts` | yes | Ask Akahu to fetch fresh data for every account |
 | `acct_refresh_account` | yes | Ask Akahu to fetch fresh data for one account |
@@ -238,8 +238,10 @@ marked `"pending": true`.
 Dates are New Zealand calendar days (`Pacific/Auckland`), even though Akahu
 stores UTC timestamps. A date-only filter such as `start_date=2026-10-18`
 covers that whole NZ day, at either end of a range; a full ISO 8601 timestamp
-is passed to Akahu unchanged. Amounts are formatted in each account's
-currency, so a USD account shows `-USD 9.99`.
+is passed to Akahu unchanged, and Akahu reads one without an offset as UTC.
+Amounts are formatted in each account's currency, so a USD account shows
+`-USD 9.99`. When an account's currency is unknown, `currency` is `null` and
+the amount is a bare number.
 
 ## Privacy
 

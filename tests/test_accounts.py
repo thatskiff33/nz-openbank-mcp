@@ -289,6 +289,8 @@ async def test_account_pending_transactions(
                 "amount_raw": -5.5,
                 "currency": "NZD",
                 "type": "EFTPOS",
+                "merchant": None,
+                "category": None,
                 "pending": True,
             }
         ],
@@ -330,10 +332,10 @@ async def test_account_pending_transactions_uses_account_currency(
     assert result["transactions"][0]["amount"] == "-USD 9.99"
 
 
-async def test_account_pending_transactions_no_balance_defaults_to_nzd(
+async def test_account_pending_transactions_no_balance_has_unknown_currency(
     fake_env: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """If the parent account has no balance block, fall back to NZD formatting."""
+    """Without a balance block the currency is unknown, so the amount has no symbol."""
     from nz_openbank_mcp import deps
     from nz_openbank_mcp.models import PendingTransaction
     from nz_openbank_mcp.tools.accounts import get_pending_transactions
@@ -353,7 +355,8 @@ async def test_account_pending_transactions_no_balance_defaults_to_nzd(
     client.get_account_pending_transactions = AsyncMock(return_value=[txn])
     monkeypatch.setattr(deps, "get_client", lambda: client)
     result = await get_pending_transactions(account_id="acc_x")
-    assert result["transactions"][0]["amount"] == "-$1.00"
+    assert result["transactions"][0]["amount"] == "-1.00"
+    assert result["transactions"][0]["currency"] is None
 
 
 async def test_account_pending_transactions_empty(
@@ -384,3 +387,34 @@ async def test_server_registers_six_tools(fake_env: None) -> None:
         "refresh_account",
         "get_pending_transactions",
     }
+
+
+async def test_account_pending_requests_run_concurrently(
+    fake_env: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Each mock waits for the other to start, so a sequential version times out."""
+    import asyncio
+
+    from nz_openbank_mcp import deps
+    from nz_openbank_mcp.tools.accounts import get_pending_transactions
+
+    account_started, pending_started = asyncio.Event(), asyncio.Event()
+    item = load_fixture("accounts")["items"][0]
+
+    async def get_account(_account_id: str) -> Account:
+        account_started.set()
+        await pending_started.wait()
+        return Account.model_validate(item)
+
+    async def get_pending(_account_id: str) -> list[object]:
+        pending_started.set()
+        await account_started.wait()
+        return []
+
+    client = MagicMock()
+    client.get_account = get_account
+    client.get_account_pending_transactions = get_pending
+    monkeypatch.setattr(deps, "get_client", lambda: client)
+    async with asyncio.timeout(1):
+        result = await get_pending_transactions(account_id="acc_chq_001")
+    assert result["transactions"] == []

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from datetime import timedelta
 from typing import Annotated, Any, Literal
 
@@ -10,8 +9,9 @@ from fastmcp import Context, FastMCP
 from pydantic import Field
 
 from nz_openbank_mcp import deps
+from nz_openbank_mcp.aio import pair
 from nz_openbank_mcp.client import AkahuClient
-from nz_openbank_mcp.formatting import akahu_bound, format_money, local_date, nz_today
+from nz_openbank_mcp.formatting import akahu_bound, format_money, local_date, nz_day, nz_today
 from nz_openbank_mcp.models import Account, PendingTransaction, Transaction
 from nz_openbank_mcp.safety import (
     ElicitationDeclinedError,
@@ -26,7 +26,7 @@ from nz_openbank_mcp.tool_metadata import (
 server: FastMCP[Any] = FastMCP("transactions")
 
 IssueType = Literal["DUPLICATE", "ENRICHMENT_ERROR", "ENRICHMENT_SUGGESTION"]
-Limit = Annotated[int, Field(ge=1, le=500)]
+Limit = Annotated[int, Field(ge=1, le=500, strict=True)]
 
 SEARCH_DEFAULT_DAYS = 90
 
@@ -42,7 +42,7 @@ async def _currencies(client: AkahuClient) -> dict[str, str]:
 
 def _summarise(txn: Transaction, currencies: dict[str, str]) -> dict[str, Any]:
     """Settled transaction in the LLM-facing shape, in its account's currency."""
-    currency = currencies.get(txn.account, "NZD")
+    currency = currencies.get(txn.account)
     return {
         "id": txn.id,
         "account_id": txn.account,
@@ -57,7 +57,7 @@ def _summarise(txn: Transaction, currencies: dict[str, str]) -> dict[str, Any]:
     }
 
 
-def summarise_pending(txn: PendingTransaction, currency: str) -> dict[str, Any]:
+def summarise_pending(txn: PendingTransaction, currency: str | None) -> dict[str, Any]:
     """Pending transaction in the LLM-facing shape. Pending items have no id."""
     return {
         "account_id": txn.account,
@@ -67,6 +67,8 @@ def summarise_pending(txn: PendingTransaction, currency: str) -> dict[str, Any]:
         "amount_raw": txn.amount,
         "currency": currency,
         "type": txn.type,
+        "merchant": txn.merchant.name if txn.merchant else None,
+        "category": txn.category.name if txn.category else None,
         "pending": True,
     }
 
@@ -86,15 +88,18 @@ async def get_transactions(
     Returns {"transactions": [...]} where each entry has id, account_id,
     date (YYYY-MM-DD, NZ calendar day), description, amount (formatted in the
     account's currency, e.g. "-$12.50" or "-USD 9.99"), amount_raw (float;
-    negative = debit), currency (ISO code), type, merchant (str | None),
+    negative = debit), currency (ISO code, or None with a bare-number amount
+    when the account's currency is unknown), type, merchant (str | None),
     category (str | None).
 
     Args:
         account_id: Scope to one account (sent to Akahu).
         start_date: Earliest NZ day as YYYY-MM-DD (inclusive), or an ISO 8601
-            timestamp passed to Akahu as an exclusive lower bound.
+            timestamp passed to Akahu as an exclusive lower bound (UTC if it
+            has no offset).
         end_date: Latest NZ day as YYYY-MM-DD (inclusive), or an ISO 8601
-            timestamp passed to Akahu as an inclusive upper bound.
+            timestamp passed to Akahu as an inclusive upper bound (UTC if it
+            has no offset).
         category: Exact category name (applied after fetching).
         min_amount: Lower bound on signed amount (applied after fetching; negatives are debits).
         max_amount: Upper bound on signed amount (applied after fetching).
@@ -133,9 +138,7 @@ async def get_transaction(transaction_id: str) -> dict[str, Any]:
         transaction_id: Akahu transaction id (e.g. "txn_a1b2c3").
     """
     client = deps.get_client()
-    txn, currencies = await asyncio.gather(
-        client.get_transaction(transaction_id), _currencies(client)
-    )
+    txn, currencies = await pair(client.get_transaction(transaction_id), _currencies(client))
     return _summarise(txn, currencies)
 
 
@@ -151,9 +154,7 @@ async def get_transactions_by_ids(ids: list[str]) -> dict[str, Any]:
         ids: List of Akahu transaction ids.
     """
     client = deps.get_client()
-    txns, currencies = await asyncio.gather(
-        client.get_transactions_by_ids(ids), _currencies(client)
-    )
+    txns, currencies = await pair(client.get_transactions_by_ids(ids), _currencies(client))
     return {"transactions": [_summarise(t, currencies) for t in txns]}
 
 
@@ -165,12 +166,13 @@ async def get_pending_transactions() -> dict[str, Any]:
     appear in get_transactions until they settle, and they can change or
     vanish before then. Returns {"transactions": [...]} where each entry has
     account_id, date (YYYY-MM-DD, NZ calendar day), description, amount
-    (formatted in the account's currency), amount_raw, currency, type and
-    pending (always true). Pending entries have no id.
+    (formatted in the account's currency), amount_raw, currency (None if
+    unknown), type, merchant, category and pending (always true). Pending
+    entries have no id.
     """
     client = deps.get_client()
-    txns, currencies = await asyncio.gather(client.get_pending_transactions(), _currencies(client))
-    return {"transactions": [summarise_pending(t, currencies.get(t.account, "NZD")) for t in txns]}
+    txns, currencies = await pair(client.get_pending_transactions(), _currencies(client))
+    return {"transactions": [summarise_pending(t, currencies.get(t.account)) for t in txns]}
 
 
 @server.tool(title="Search Transactions", annotations=READ_ONLY_ANNOTATIONS)
@@ -182,8 +184,9 @@ async def search_transactions(
 ) -> dict[str, Any]:
     """Case-insensitive substring search across description and merchant name.
 
-    Searches settled transactions in a date window, the last 90 days unless
-    start_date is given, until `limit` matches are found. Use for free-text
+    Searches settled transactions in a date window until `limit` matches are
+    found. Without start_date the window is the 90 NZ days ending on end_date,
+    or ending today. Use for free-text
     lookups; prefer get_transactions when filtering by account or amount.
     Returns {"transactions": [...]} with the same per-entry shape as
     get_transactions.
@@ -191,13 +194,14 @@ async def search_transactions(
     Args:
         query: Substring to match (case-insensitive).
         start_date: Earliest NZ day as YYYY-MM-DD (inclusive) or an ISO 8601
-            timestamp; defaults to 90 days before today (NZ).
+            timestamp (UTC if it has no offset); defaults to 90 days back.
         end_date: Latest NZ day as YYYY-MM-DD (inclusive) or an ISO 8601
-            timestamp; defaults to no upper bound.
+            timestamp (UTC if it has no offset); defaults to no upper bound.
         limit: Max matches returned, 1 to 500 (default 50).
     """
-    if start_date is None:
-        start_date = (nz_today() - timedelta(days=SEARCH_DEFAULT_DAYS)).isoformat()
+    if not (start_date or "").strip():
+        last_day = nz_day(end_date) if end_date and end_date.strip() else nz_today()
+        start_date = (last_day - timedelta(days=SEARCH_DEFAULT_DAYS - 1)).isoformat()
     client = deps.get_client()
     currencies = await _currencies(client)
     needle = query.lower()
