@@ -95,14 +95,13 @@ async def get_transactions(
     """List settled transactions with optional filters.
 
     Returns {"transactions": [...], "truncated": bool} where each entry has
-    id, account_id, date (YYYY-MM-DD, NZ calendar day), description, amount (formatted in the
-    account's currency, e.g. "-$12.50" or "-USD 9.99"), amount_raw (float;
-    negative = debit), currency (ISO code, or None when the account's
-    currency is unknown, in which case amount has no symbol, e.g.
-    "-1,234.50"), type, merchant (str | None), category (str | None).
-    truncated is true when the scan stopped at the page cap (2,000
-    transactions) before reaching the end of the range; narrow the dates and
-    call again.
+    id, account_id, date (YYYY-MM-DD, NZ calendar day), description, amount
+    (formatted in the account's currency, e.g. "-$12.50" or "-USD 9.99"),
+    amount_raw (float; negative = debit), currency (ISO code, or None when
+    the account's currency is unknown, in which case amount has no symbol,
+    e.g. "-1,234.50"), type, merchant (str | None), category (str | None).
+    truncated is true when the scan stopped at the 20-page cap before
+    reaching the end of the range; narrow the dates and call again.
 
     Args:
         account_id: Scope to one account (sent to Akahu).

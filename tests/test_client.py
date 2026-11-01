@@ -726,3 +726,71 @@ async def test_last_page_is_not_truncated(akahu_client: Any, respx_mock: respx.M
     pages = akahu_client.iter_account_transactions("acc_1")
     assert [t async for t in pages] == []
     assert pages.truncated is False
+
+
+@pytest.mark.parametrize(
+    "failure", [httpx.Response(503), httpx.ReadTimeout("slow")], ids=["5xx", "transport"]
+)
+async def test_verify_name_is_sent_once(
+    akahu_client: Any,
+    respx_mock: respx.MockRouter,
+    monkeypatch: pytest.MonkeyPatch,
+    failure: Any,
+) -> None:
+    _record_sleeps(monkeypatch)
+    route = respx_mock.post("/verify/name").mock(side_effect=[failure])
+    with pytest.raises((httpx.HTTPStatusError, httpx.ReadTimeout)):
+        await akahu_client.verify_name(family_name="Person")
+    assert route.call_count == 1
+
+
+async def test_exhausted_429_sleeps_only_between_attempts(
+    akahu_client: Any, respx_mock: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sleeps = _record_sleeps(monkeypatch)
+    respx_mock.get("/me").mock(return_value=httpx.Response(429))
+    with pytest.raises(httpx.HTTPStatusError):
+        await akahu_client.get_me()
+    assert sleeps == [1.0, 2.0]
+
+
+@pytest.mark.parametrize(
+    ("path", "body", "call", "message"),
+    [
+        ("/me", {"item": None}, lambda c: c.get_me(), "/me: no item"),
+        ("/accounts", {"items": [1, 2]}, lambda c: c.list_accounts(), "/accounts: no items list"),
+    ],
+)
+async def test_malformed_entries_raise_tool_error(
+    akahu_client: Any,
+    respx_mock: respx.MockRouter,
+    path: str,
+    body: dict[str, Any],
+    call: Any,
+    message: str,
+) -> None:
+    from fastmcp.exceptions import ToolError
+
+    respx_mock.get(path).mock(return_value=httpx.Response(200, json=body))
+    with pytest.raises(ToolError, match=message):
+        await call(akahu_client)
+
+
+async def test_page_iteration_restarts_cleanly(
+    akahu_client: Any, respx_mock: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import nz_openbank_mcp.client as client_mod
+
+    item = load_fixture("transactions")["items"][0]
+    respx_mock.get("/transactions").mock(
+        side_effect=[
+            httpx.Response(200, json={"items": [item], "cursor": {"next": "more"}}),
+            httpx.Response(200, json={"items": [item], "cursor": {"next": None}}),
+        ]
+    )
+    monkeypatch.setattr(client_mod, "MAX_PAGES", 1)
+    pages = akahu_client.iter_transactions()
+    assert len([t async for t in pages]) == 1
+    assert pages.truncated is True
+    assert len([t async for t in pages]) == 1
+    assert pages.truncated is False

@@ -91,6 +91,7 @@ async def test_get_transactions_returns_all(fake_env: None, patched_client: Magi
     assert t0["amount"] == "-$82.45"
     assert t0["merchant"] == "Demo Grocer"
     assert t0["category"] == "Groceries"
+    assert result["truncated"] is False
 
 
 async def test_get_transactions_filters_by_amount(
@@ -724,3 +725,49 @@ async def test_bad_date_filter_fails_before_any_request(
         await search_transactions(query="x", start_date="2026-01-01", end_date="yesterday")
     patched_client.iter_transactions.assert_not_called()
     patched_client.list_accounts.assert_not_called()
+
+
+# ---------- page cap ----------
+
+
+def _endless_pages(txn: Transaction) -> TransactionPages:
+    async def page(_cursor: str | None) -> tuple[list[Transaction], str | None]:
+        return [txn], "more"
+
+    return TransactionPages(page)
+
+
+async def test_get_transactions_reports_truncation_at_page_cap(
+    fake_env: None, patched_client: MagicMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import nz_openbank_mcp.client as client_mod
+    from nz_openbank_mcp.tools.transactions import get_transactions
+
+    monkeypatch.setattr(client_mod, "MAX_PAGES", 2)
+    patched_client.iter_transactions = MagicMock(side_effect=lambda **_: _endless_pages(_txn()))
+    result = await get_transactions(category="none-match")
+    assert result == {"transactions": [], "truncated": True}
+
+
+async def test_search_reports_truncation_at_page_cap(
+    fake_env: None, patched_client: MagicMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import nz_openbank_mcp.client as client_mod
+    from nz_openbank_mcp.tools.transactions import search_transactions
+
+    monkeypatch.setattr(client_mod, "MAX_PAGES", 2)
+    patched_client.iter_transactions = MagicMock(side_effect=lambda **_: _endless_pages(_txn()))
+    result = await search_transactions(query="foo", limit=10)
+    assert len(result["transactions"]) == 2
+    assert result["truncated"] is True
+
+
+async def test_reaching_limit_before_cap_is_not_truncated(
+    fake_env: None, patched_client: MagicMock
+) -> None:
+    from nz_openbank_mcp.tools.transactions import search_transactions
+
+    patched_client.iter_transactions = MagicMock(side_effect=lambda **_: _endless_pages(_txn()))
+    result = await search_transactions(query="foo", limit=3)
+    assert len(result["transactions"]) == 3
+    assert result["truncated"] is False

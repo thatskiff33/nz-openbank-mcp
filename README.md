@@ -233,13 +233,14 @@ answers 403.
 Pending transactions have no id, can change before they settle, and are
 marked `"pending": true`.
 
-`txn_get_transactions` and `txn_search_transactions` read at most 2,000
-transactions (20 pages) per call. When a range holds more, the result has
+`txn_get_transactions` and `txn_search_transactions` read at most 20 pages
+of results from Akahu per call. When a range holds more, the result has
 `"truncated": true`; ask again with a narrower date range.
 
-Reads are retried up to three times on network errors and Akahu server
-errors. Writes are sent once, because a request that timed out may still
-have reached Akahu.
+Reads and account refreshes are tried up to three times on network errors
+and Akahu server errors. Support tickets and name checks are sent once,
+because a request that timed out may still have reached Akahu. Rate-limit
+(429) responses are retried for every request.
 
 ## Dates and amounts
 

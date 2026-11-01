@@ -62,6 +62,7 @@ class TransactionPages:
         self.truncated = False
 
     async def __aiter__(self) -> AsyncIterator[Transaction]:
+        self.truncated = False
         cursor: str | None = None
         for _ in range(MAX_PAGES):
             items, cursor = await self._fetch(cursor)
@@ -74,15 +75,16 @@ class TransactionPages:
 
 def _items(data: dict[str, Any], path: str) -> list[Any]:
     items = data.get("items")
-    if not isinstance(items, list):
+    if not isinstance(items, list) or not all(isinstance(i, dict) for i in items):
         raise ToolError(f"Akahu returned an unexpected response for {path}: no items list.")
     return items
 
 
-def _item(data: dict[str, Any], path: str) -> Any:
-    if "item" not in data:
+def _item(data: dict[str, Any], path: str) -> dict[str, Any]:
+    item = data.get("item")
+    if not isinstance(item, dict):
         raise ToolError(f"Akahu returned an unexpected response for {path}: no item.")
-    return data["item"]
+    return item
 
 
 class AkahuClient:
