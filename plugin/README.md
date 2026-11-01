@@ -1,73 +1,70 @@
-# nz-openbank-mcp (plugin)
+# nz-openbank-mcp plugin
 
-This plugin packages [`nz-openbank-mcp`](https://github.com/thatskiff33/nz-openbank-mcp) for **Claude Code**, **Codex**, **Cursor** and **Grok Build** via this repo's plugin marketplaces. It exposes 14 MCP tools for the Akahu open-finance API (NZ). In Claude Code, credentials are prompted at install and stored in your OS keychain (macOS Keychain on macOS, Windows Credential Manager on Windows). See the [main repo README](https://github.com/thatskiff33/nz-openbank-mcp#readme) for tool reference and architecture details.
+This directory is the plugin that Claude Code, Codex, Cursor and Grok Build
+install from this repo's marketplaces. It starts the
+[`nz-openbank-mcp`](https://github.com/thatskiff33/nz-openbank-mcp) server
+with `uvx` and gives your assistant 14 Akahu tools, read-only until you say
+otherwise. The [main README](https://github.com/thatskiff33/nz-openbank-mcp#readme)
+lists the tools and settings.
 
-> **Claude Desktop users:** use the `.mcpb` Desktop Extension instead - see the [main README](https://github.com/thatskiff33/nz-openbank-mcp#install-in-claude-desktop). Claude Desktop has no UI to configure marketplace-plugin `userConfig` values ([anthropics/claude-code#39455](https://github.com/anthropics/claude-code/issues/39455), [#39827](https://github.com/anthropics/claude-code/issues/39827)).
+For Claude Desktop, use the `.mcpb` extension from the
+[latest release](https://github.com/thatskiff33/nz-openbank-mcp/releases/latest)
+instead. Desktop cannot yet collect plugin settings
+([anthropics/claude-code#39455](https://github.com/anthropics/claude-code/issues/39455)).
 
-## Prerequisites
+## Claude Code
 
-1. **Akahu Personal App + User token** - register at https://my.akahu.nz/developers
-2. **[`uv`](https://docs.astral.sh/uv/)** on `PATH` so `uvx` can launch the server
-3. **Claude Code** (v2.1.83 or later)
-
-## Install in Claude Code
+You need Claude Code 2.1.83 or later, `uv` on your `PATH`, and the App and
+User Tokens from your Akahu Personal App
+([my.akahu.nz/developers](https://my.akahu.nz/developers)).
 
 ```text
 /plugin marketplace add thatskiff33/nz-openbank-mcp
 /plugin install nz-openbank-mcp@nz-openbank
 ```
 
-You will be prompted for four values:
+Claude Code then asks for:
 
-| Field | What it is | Default |
+| Setting | Default | Notes |
 | --- | --- | --- |
-| Akahu User Token | User token from the Akahu developer console | (none) |
-| Akahu App Token | App token from the Akahu developer console | (none) |
-| Read-only mode | `true` refuses every write tool | `true` |
-| Automation bypass | `true` skips consent for safe writes (refresh only) | `false` |
+| Akahu User Token | none | Kept in the OS keychain |
+| Akahu App Token | none | Kept in the OS keychain |
+| Read-only mode | `true` | `false` lets write tools run, each with a confirmation prompt |
+| Automation bypass | `false` | `true` skips the prompt for the two refresh tools only |
 
-The two tokens are stored in your OS keychain (macOS Keychain / Windows Credential Manager); they never land in plaintext config. The safety defaults give you a read-only server out of the box.
+To check it worked, run `/mcp` and look for the server, then ask for your
+account list. Asking for a refresh should be refused while read-only mode is
+on.
 
-After install: `/mcp` should show `nz-openbank-mcp` connected. Ask Claude *"what accounts do I have?"* to confirm tokens reached the server.
+| Task | Command |
+| --- | --- |
+| Change settings | `/plugin`, pick **nz-openbank-mcp**, then **Configure options** |
+| Move to a newer release | `/plugin marketplace update nz-openbank` |
+| Remove (also clears the stored tokens) | `/plugin uninstall nz-openbank-mcp@nz-openbank` |
 
-### Reconfigure later
+Each plugin version launches one pinned PyPI release, so updating the
+marketplace is how you get a newer server.
 
-`/plugin` -> Installed -> nz-openbank-mcp -> Configure options. Useful for flipping `read-only` to `false` when you need a refresh, then back to `true`.
-
-## Verifying the install
-
-- `/mcp` lists `nz-openbank-mcp` as connected
-- Ask Claude to run a read tool (e.g. `acct_list_accounts`): it returns masked account details
-- With defaults (`read-only=true`), any write tool refuses with `ReadOnlyError` before any HTTP call
-
-## Updating
-
-```text
-/plugin marketplace update nz-openbank
-```
-
-The plugin launches the PyPI release pinned in `.mcp.json` (`uvx --from nz-openbank-mcp==X.Y.Z`). Run the marketplace update above to move to a newer release.
-
-## Uninstall
-
-```text
-/plugin uninstall nz-openbank-mcp@nz-openbank
-```
-
-Removes the userConfig values from your OS keychain.
-
-## Other hosts
+## Codex, Cursor and Grok Build
 
 ```bash
-codex plugin marketplace add thatskiff33/nz-openbank-mcp && codex plugin add nz-openbank-mcp@nz-openbank
-agent plugin marketplace add https://github.com/thatskiff33/nz-openbank-mcp   # Cursor, then install from Customize
-grok plugin marketplace add thatskiff33/nz-openbank-mcp && grok plugin install nz-openbank-mcp --trust
+codex plugin marketplace add thatskiff33/nz-openbank-mcp
+codex plugin add nz-openbank-mcp@nz-openbank
+
+agent plugin marketplace add https://github.com/thatskiff33/nz-openbank-mcp
+# then install nz-openbank-mcp from Customize in Cursor
+
+grok plugin marketplace add thatskiff33/nz-openbank-mcp
+grok plugin install nz-openbank-mcp --trust
 ```
 
-Codex and Grok Build read `AKAHU_USER_TOKEN` and `AKAHU_APP_TOKEN` from the environment they were started in; Cursor reads them from **Plugins -> Configure**. See the [main README](https://github.com/thatskiff33/nz-openbank-mcp#install-in-codex-cursor-and-grok-build).
+Cursor takes the tokens under **Plugins -> Configure**. Codex and Grok Build
+read `AKAHU_USER_TOKEN` and `AKAHU_APP_TOKEN` from the environment they start
+in; the [main README](https://github.com/thatskiff33/nz-openbank-mcp#codex-grok-build)
+shows how to load them from your OS secret store.
 
-Every manifest in this directory is generated from `plugin.base.toml` by `scripts/sync_plugin_manifests.py`; edit the base file, not the JSON.
+## Editing
 
-## Manual install (non-plugin path)
-
-If you'd rather wire the server yourself with `claude mcp add` or `claude_desktop_config.json`, see the install sections in the [main repo README](https://github.com/thatskiff33/nz-openbank-mcp#readme).
+The JSON manifests here are generated. Change `plugin.base.toml`, then run
+`uv run --no-project python scripts/sync_plugin_manifests.py` from the repo
+root.
