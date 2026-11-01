@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from pathlib import Path
 
 import httpx
@@ -106,7 +107,9 @@ def test_env_file_cannot_opt_in_to_custom_base_url(
     env_file.chmod(0o600)
     monkeypatch.setenv("AKAHU_ENV_FILE", str(env_file))
 
-    with pytest.raises(ValidationError, match="base_url must be on https://api.akahu.io"):
+    with pytest.raises(
+        ValidationError, match=re.escape("base_url must be on https://api.akahu.io")
+    ):
         AkahuConfig()
 
 
@@ -364,7 +367,7 @@ def test_env_file_writable_by_others_is_refused(
 def test_env_file_mode_not_checked_off_posix(
     plugin_env: None, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    import nz_openbank_mcp.config as config
+    from nz_openbank_mcp import config
 
     env_file = tmp_path / "server.env"
     env_file.write_text("AKAHU_READ_ONLY=false\n")
@@ -467,7 +470,7 @@ def test_banner_warns_when_base_url_is_custom(
 def test_env_file_owned_by_another_user_is_refused(
     fake_env: None, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    import nz_openbank_mcp.config as config
+    from nz_openbank_mcp import config
 
     env_file = tmp_path / "server.env"
     env_file.write_text("AKAHU_READ_ONLY=false\n")

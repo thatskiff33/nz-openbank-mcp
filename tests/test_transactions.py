@@ -772,3 +772,25 @@ async def test_reaching_limit_before_cap_is_not_truncated(
     result = await search_transactions(query="foo", limit=3)
     assert len(result["transactions"]) == 3
     assert result["truncated"] is False
+
+
+async def test_amount_filters_and_amount_raw_use_cents(
+    fake_env: None, patched_client: MagicMock
+) -> None:
+    from nz_openbank_mcp.tools.transactions import get_transactions
+
+    txns = [_txn(_id="a", amount=-10.005), _txn(_id="b", amount=-10.01)]
+    patched_client.iter_transactions = MagicMock(side_effect=lambda **_: _async_iter(txns))
+    result = await get_transactions(min_amount=-10.005)
+    assert [t["id"] for t in result["transactions"]] == ["a"]
+    assert result["transactions"][0]["amount_raw"] == -10.0
+    assert result["transactions"][0]["amount"] == "-$10.00"
+
+
+@pytest.mark.parametrize("bound", ["NaN", "Infinity", "-Infinity"])
+async def test_non_finite_amount_filters_are_rejected(fake_env: None, bound: str) -> None:
+    from nz_openbank_mcp.server import build_server
+
+    async with Client(build_server()) as c:
+        with pytest.raises(ToolError, match="finite"):
+            await c.call_tool("txn_get_transactions", {"min_amount": bound})

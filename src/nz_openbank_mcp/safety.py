@@ -71,6 +71,7 @@ _PENDING: dict[str, tuple[float, str]] = {}
 MAX_SHOWN_CHARS = 1000
 _ESCAPES = {'"': '\\"', "\\": "\\\\", "\n": "\\n", "\r": "\\r", "\t": "\\t"}
 _HIDDEN_CATEGORIES = {"Cc", "Cf", "Cs", "Co", "Cn", "Zl", "Zp"}
+_BMP_MAX = 0xFFFF
 
 Describe = str | Callable[[dict[str, Any]], str]
 Prepare = Callable[[Any, dict[str, Any]], Awaitable[None]]
@@ -124,7 +125,7 @@ def shown(value: str) -> str:
         if ch in _ESCAPES:
             out.append(_ESCAPES[ch])
         elif unicodedata.category(ch) in _HIDDEN_CATEGORIES:
-            out.append(f"\\u{ord(ch):04x}" if ord(ch) <= 0xFFFF else f"\\U{ord(ch):08x}")
+            out.append(f"\\u{ord(ch):04x}" if ord(ch) <= _BMP_MAX else f"\\U{ord(ch):08x}")
         else:
             out.append(ch)
     return '"' + "".join(out) + '"'
@@ -277,7 +278,7 @@ def require_write_consent(
                     "Write operations are disabled. To enable: set "
                     "AKAHU_READ_ONLY=false in the server's environment and restart "
                     "the MCP server. Each write will require your explicit confirmation "
-                    "through Claude (or set AKAHU_AUTOMATION_BYPASS=true for "
+                    "in your MCP client (or set AKAHU_AUTOMATION_BYPASS=true for "
                     "the automatable subset only)."
                 )
 

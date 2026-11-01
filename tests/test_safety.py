@@ -18,7 +18,7 @@ async def test_confirm_write_proceeds_on_accept(
     ctx = ctx_factory(elicit_action="accept")
     await confirm_write(ctx, "Do the thing?")
     ctx.elicit.assert_awaited_once()
-    args, kwargs = ctx.elicit.call_args
+    args, _ = ctx.elicit.call_args
     assert "Do the thing?" in args[0]
 
 
@@ -182,7 +182,7 @@ def test_bypass_eligible_tools_registry(fake_env: None) -> None:
     from nz_openbank_mcp.safety import bypass_eligible_tools, require_write_consent
 
     # Snapshot/restore to avoid polluting other tests that rely on real tool registrations.
-    snapshot = set(safety._BYPASS_REGISTRY)  # noqa: SLF001
+    snapshot = set(safety._BYPASS_REGISTRY)
     try:
 
         @require_write_consent("auto thing", automatable=True)
@@ -195,8 +195,8 @@ def test_bypass_eligible_tools_registry(fake_env: None) -> None:
         assert "auto_thing" in names
         assert "manual_thing" not in names
     finally:
-        safety._BYPASS_REGISTRY.clear()  # noqa: SLF001
-        safety._BYPASS_REGISTRY.update(snapshot)  # noqa: SLF001
+        safety._BYPASS_REGISTRY.clear()
+        safety._BYPASS_REGISTRY.update(snapshot)
 
 
 def test_shown_quotes_and_escapes_layout_characters() -> None:

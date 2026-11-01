@@ -12,7 +12,15 @@ from pydantic import BeforeValidator, Field
 from nz_openbank_mcp import deps
 from nz_openbank_mcp.aio import pair
 from nz_openbank_mcp.client import AkahuClient
-from nz_openbank_mcp.formatting import akahu_bound, format_money, local_date, nz_day, nz_today
+from nz_openbank_mcp.formatting import (
+    akahu_bound,
+    format_money,
+    local_date,
+    money_number,
+    nz_day,
+    nz_today,
+    to_decimal,
+)
 from nz_openbank_mcp.models import Account, PendingTransaction, Transaction
 from nz_openbank_mcp.safety import (
     MAX_SHOWN_CHARS,
@@ -40,6 +48,8 @@ def _integral(value: object) -> object:
 
 Limit = Annotated[int, Field(ge=1, le=500, strict=True), BeforeValidator(_integral)]
 
+AmountBound = Annotated[float, Field(allow_inf_nan=False)]
+
 SEARCH_DEFAULT_DAYS = 90
 
 
@@ -61,7 +71,7 @@ def _summarise(txn: Transaction, currencies: dict[str, str]) -> dict[str, Any]:
         "date": local_date(txn.date),
         "description": txn.description,
         "amount": format_money(txn.amount, currency),
-        "amount_raw": txn.amount,
+        "amount_raw": money_number(txn.amount),
         "currency": currency,
         "type": txn.type,
         "merchant": txn.merchant.name if txn.merchant else None,
@@ -76,7 +86,7 @@ def summarise_pending(txn: PendingTransaction, currency: str | None) -> dict[str
         "date": local_date(txn.date),
         "description": txn.description,
         "amount": format_money(txn.amount, currency),
-        "amount_raw": txn.amount,
+        "amount_raw": money_number(txn.amount),
         "currency": currency,
         "type": txn.type,
         "merchant": txn.merchant.name if txn.merchant else None,
@@ -91,8 +101,8 @@ async def get_transactions(
     start_date: str | None = None,
     end_date: str | None = None,
     category: str | None = None,
-    min_amount: float | None = None,
-    max_amount: float | None = None,
+    min_amount: AmountBound | None = None,
+    max_amount: AmountBound | None = None,
     limit: Limit = 100,
 ) -> dict[str, Any]:
     """List settled transactions with optional filters.
@@ -100,11 +110,11 @@ async def get_transactions(
     Returns {"transactions": [...], "truncated": bool} where each entry has
     id, account_id, date (YYYY-MM-DD, NZ calendar day), description, amount
     (formatted in the account's currency, e.g. "-$12.50" or "-USD 9.99"),
-    amount_raw (float; negative = debit), currency (ISO code, or None when
-    the account's currency is unknown, in which case amount has no symbol,
-    e.g. "-1,234.50"), type, merchant (str | None), category (str | None).
-    truncated is true when the scan stopped at the 20-page cap before
-    reaching the end of the range; narrow the dates and call again.
+    amount_raw (number rounded to cents; negative = debit), currency (ISO
+    code, or None when the account's currency is unknown, in which case amount
+    has no symbol, e.g. "-1,234.50"), type, merchant (str | None), category
+    (str | None). truncated is true when the scan stopped at the 20-page cap
+    before reaching the end of the range; narrow the dates and call again.
 
     Args:
         account_id: Scope to one account (sent to Akahu).
@@ -128,13 +138,15 @@ async def get_transactions(
     else:
         iterator = client.iter_transactions(start=start, end=end)
 
+    low = None if min_amount is None else to_decimal(min_amount)
+    high = None if max_amount is None else to_decimal(max_amount)
     collected: list[Transaction] = []
     async for txn in iterator:
         if category and (txn.category is None or txn.category.name != category):
             continue
-        if min_amount is not None and txn.amount < min_amount:
+        if low is not None and txn.amount < low:
             continue
-        if max_amount is not None and txn.amount > max_amount:
+        if high is not None and txn.amount > high:
             continue
         collected.append(txn)
         if len(collected) >= limit:

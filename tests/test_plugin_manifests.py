@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def _run(script: str, *args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
+    return subprocess.run(  # noqa: S603 - this interpreter running a repo script
         [sys.executable, str(ROOT / "scripts" / script), *args],
         capture_output=True,
         text=True,

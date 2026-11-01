@@ -89,7 +89,7 @@ class AllowlistedGoogleOAuthProvider(GoogleProvider):
     redirect allowlist admits any Claude or ChatGPT account, not just the owner's.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - keyword-only settings passed straight through
         self,
         *,
         client_id: str,

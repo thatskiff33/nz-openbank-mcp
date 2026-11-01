@@ -15,6 +15,29 @@ _DATE_ONLY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 NZ_TZ = ZoneInfo("Pacific/Auckland")
 
 
+CENT = Decimal("0.01")
+MONEY_ROUNDING = ROUND_HALF_EVEN
+
+
+def to_decimal(amount: float | int | Decimal) -> Decimal:
+    """`amount` as a Decimal; floats go through their shortest repr.
+
+    So 2.675 becomes the 2.675 a person typed, not the binary value just
+    below it.
+    """
+    return Decimal(repr(amount)) if isinstance(amount, float) else Decimal(amount)
+
+
+def to_cents(amount: float | int | Decimal) -> Decimal:
+    """`amount` rounded to cents with banker's rounding (half to even)."""
+    return to_decimal(amount).quantize(CENT, rounding=MONEY_ROUNDING)
+
+
+def money_number(amount: Decimal) -> float:
+    """`amount` rounded to cents, as a JSON number (never -0.0)."""
+    return float(to_cents(amount)) or 0.0
+
+
 def format_money(amount: float | int | Decimal, currency: str | None = "NZD") -> str:
     """Format a numeric amount as a currency string.
 
@@ -31,7 +54,7 @@ def format_money(amount: float | int | Decimal, currency: str | None = "NZD") ->
     >>> format_money(-89.99, "EUR")
     '-EUR 89.99'
     """
-    quantised = Decimal(str(amount)).quantize(Decimal("0.01"), rounding=ROUND_HALF_EVEN)
+    quantised = to_cents(amount)
     sign = "-" if quantised < 0 else ""
     absolute = abs(quantised)
     integer_part, _, fractional = format(absolute, "f").partition(".")
