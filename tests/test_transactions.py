@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Callable
+from collections.abc import Callable
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastmcp import Client
 from fastmcp.exceptions import ToolError
 
+from nz_openbank_mcp.client import TransactionPages
 from nz_openbank_mcp.models import Account, PendingTransaction, SupportRequest, Transaction
 from tests.conftest import load_fixture
 
@@ -50,12 +51,11 @@ def _txn(**overrides: object) -> Transaction:
     )
 
 
-def _async_iter(items: list[Transaction]) -> AsyncIterator[Transaction]:
-    async def gen() -> AsyncIterator[Transaction]:
-        for t in items:
-            yield t
+def _async_iter(items: list[Transaction]) -> TransactionPages:
+    async def one_page(_cursor: str | None) -> tuple[list[Transaction], str | None]:
+        return items, None
 
-    return gen()
+    return TransactionPages(one_page)
 
 
 @pytest.fixture

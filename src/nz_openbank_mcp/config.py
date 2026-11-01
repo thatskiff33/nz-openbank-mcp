@@ -13,6 +13,7 @@ the process environment (an env file cannot set it).
 from __future__ import annotations
 
 import os
+from functools import cache
 from pathlib import Path
 from typing import Literal, Self
 from urllib.parse import urlsplit
@@ -174,6 +175,12 @@ class AkahuConfig(_Settings):
             "Authorization": f"Bearer {self.user_token.get_secret_value()}",
             "X-Akahu-Id": self.app_token.get_secret_value(),
         }
+
+
+@cache
+def get_config() -> AkahuConfig:
+    """The process's AkahuConfig, read once so safety flags cannot change before restart."""
+    return AkahuConfig()
 
 
 class McpHttpConfig(_Settings):

@@ -94,12 +94,15 @@ async def get_transactions(
 ) -> dict[str, Any]:
     """List settled transactions with optional filters.
 
-    Returns {"transactions": [...]} where each entry has id, account_id,
-    date (YYYY-MM-DD, NZ calendar day), description, amount (formatted in the
+    Returns {"transactions": [...], "truncated": bool} where each entry has
+    id, account_id, date (YYYY-MM-DD, NZ calendar day), description, amount (formatted in the
     account's currency, e.g. "-$12.50" or "-USD 9.99"), amount_raw (float;
     negative = debit), currency (ISO code, or None when the account's
     currency is unknown, in which case amount has no symbol, e.g.
     "-1,234.50"), type, merchant (str | None), category (str | None).
+    truncated is true when the scan stopped at the page cap (2,000
+    transactions) before reaching the end of the range; narrow the dates and
+    call again.
 
     Args:
         account_id: Scope to one account (sent to Akahu).
@@ -134,7 +137,10 @@ async def get_transactions(
         collected.append(txn)
         if len(collected) >= limit:
             break
-    return {"transactions": [_summarise(t, currencies) for t in collected]}
+    return {
+        "transactions": [_summarise(t, currencies) for t in collected],
+        "truncated": iterator.truncated,
+    }
 
 
 @server.tool(title="Get Transaction", annotations=READ_ONLY_ANNOTATIONS)
@@ -196,8 +202,8 @@ async def search_transactions(
     Searches settled transactions in a date window until `limit` matches are
     found. Without start_date the window is the 90 NZ days ending on end_date,
     or ending today. Use for free-text lookups; prefer get_transactions when
-    filtering by account or amount. Returns {"transactions": [...]} with the
-    same per-entry shape as get_transactions.
+    filtering by account or amount. Returns {"transactions": [...],
+    "truncated": bool} with the same shape and meaning as get_transactions.
 
     Args:
         query: Substring to match (case-insensitive).
@@ -226,7 +232,10 @@ async def search_transactions(
             matches.append(txn)
             if len(matches) >= limit:
                 break
-    return {"transactions": [_summarise(t, currencies) for t in matches]}
+    return {
+        "transactions": [_summarise(t, currencies) for t in matches],
+        "truncated": iterator.truncated,
+    }
 
 
 @server.tool(

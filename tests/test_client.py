@@ -557,3 +557,172 @@ async def test_logs_method_path_and_status(
 async def test_aclose_is_idempotent(akahu_client: Any) -> None:
     await akahu_client.aclose()
     await akahu_client.aclose()
+
+
+# ----- idempotency, backoff schedule, malformed bodies -----
+
+
+def _record_sleeps(monkeypatch: pytest.MonkeyPatch) -> list[float]:
+    import nz_openbank_mcp.client as client_mod
+
+    sleeps: list[float] = []
+
+    async def fake_sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+
+    monkeypatch.setattr(client_mod.asyncio, "sleep", fake_sleep)
+    return sleeps
+
+
+async def test_support_post_transport_error_is_sent_once(
+    akahu_client: Any, respx_mock: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sleeps = _record_sleeps(monkeypatch)
+    route = respx_mock.post("/support/txn_1").mock(side_effect=httpx.ReadTimeout("slow"))
+    with pytest.raises(httpx.ReadTimeout):
+        await akahu_client.report_transaction_issue("txn_1", issue_type="ENRICHMENT_ERROR")
+    assert route.call_count == 1
+    assert sleeps == []
+
+
+async def test_support_post_5xx_is_not_retried(
+    akahu_client: Any, respx_mock: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _record_sleeps(monkeypatch)
+    route = respx_mock.post("/support/txn_1").mock(return_value=httpx.Response(502))
+    with pytest.raises(httpx.HTTPStatusError):
+        await akahu_client.report_transaction_issue("txn_1", issue_type="ENRICHMENT_ERROR")
+    assert route.call_count == 1
+
+
+async def test_support_post_429_is_retried(
+    akahu_client: Any, respx_mock: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _record_sleeps(monkeypatch)
+    route = respx_mock.post("/support/txn_1").mock(
+        side_effect=[httpx.Response(429), httpx.Response(200, json={"success": True})]
+    )
+    await akahu_client.report_transaction_issue("txn_1", issue_type="ENRICHMENT_ERROR")
+    assert route.call_count == 2
+
+
+async def test_get_transport_failure_tries_three_times_sleeping_one_then_two(
+    akahu_client: Any, respx_mock: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sleeps = _record_sleeps(monkeypatch)
+    route = respx_mock.get("/me").mock(side_effect=httpx.ConnectError("down"))
+    with pytest.raises(httpx.ConnectError):
+        await akahu_client.get_me()
+    assert route.call_count == 3
+    assert sleeps == [1.0, 2.0]
+
+
+async def test_get_5xx_failure_sleeps_one_then_two(
+    akahu_client: Any, respx_mock: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sleeps = _record_sleeps(monkeypatch)
+    route = respx_mock.get("/me").mock(return_value=httpx.Response(503))
+    with pytest.raises(httpx.HTTPStatusError):
+        await akahu_client.get_me()
+    assert route.call_count == 3
+    assert sleeps == [1.0, 2.0]
+
+
+@pytest.mark.parametrize(
+    ("method", "path", "call"),
+    [
+        ("POST", "/refresh", lambda c: c.refresh_all()),
+        ("POST", "/refresh/acc_1", lambda c: c.refresh_one("acc_1")),
+        ("POST", "/transactions/ids", lambda c: c.get_transactions_by_ids(["txn_1"])),
+    ],
+)
+async def test_idempotent_posts_retry_transport_errors(
+    akahu_client: Any,
+    respx_mock: respx.MockRouter,
+    monkeypatch: pytest.MonkeyPatch,
+    method: str,
+    path: str,
+    call: Any,
+) -> None:
+    _record_sleeps(monkeypatch)
+    body = {"success": True, "items": []}
+    route = respx_mock.route(method=method, path=path).mock(
+        side_effect=[httpx.ConnectError("drop"), httpx.Response(200, json=body)]
+    )
+    await call(akahu_client)
+    assert route.call_count == 2
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        httpx.Response(200, text="<html>gateway</html>"),
+        httpx.Response(200, json=["not", "an", "object"]),
+    ],
+)
+async def test_non_object_body_raises_tool_error(
+    akahu_client: Any, respx_mock: respx.MockRouter, response: httpx.Response
+) -> None:
+    from fastmcp.exceptions import ToolError
+
+    respx_mock.get("/me").mock(return_value=response)
+    with pytest.raises(ToolError, match=r"GET /me \(HTTP 200\): expected a JSON object"):
+        await akahu_client.get_me()
+
+
+async def test_missing_items_raises_tool_error(
+    akahu_client: Any, respx_mock: respx.MockRouter
+) -> None:
+    from fastmcp.exceptions import ToolError
+
+    respx_mock.get("/accounts").mock(return_value=httpx.Response(200, json={"success": True}))
+    with pytest.raises(ToolError, match="/accounts: no items list"):
+        await akahu_client.list_accounts()
+
+
+async def test_missing_item_raises_tool_error(
+    akahu_client: Any, respx_mock: respx.MockRouter
+) -> None:
+    from fastmcp.exceptions import ToolError
+
+    respx_mock.get("/me").mock(return_value=httpx.Response(200, json={"success": True}))
+    with pytest.raises(ToolError, match="/me: no item"):
+        await akahu_client.get_me()
+
+
+async def test_non_object_cursor_ends_paging(
+    akahu_client: Any, respx_mock: respx.MockRouter
+) -> None:
+    respx_mock.get("/accounts/acc_1/transactions").mock(
+        return_value=httpx.Response(200, json={"items": [], "cursor": "bogus"})
+    )
+    assert await akahu_client.get_account_transactions("acc_1") == ([], None)
+
+
+# ----- page cap -----
+
+
+async def test_page_cap_stops_and_reports_truncation(
+    akahu_client: Any, respx_mock: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import nz_openbank_mcp.client as client_mod
+
+    monkeypatch.setattr(client_mod, "MAX_PAGES", 3)
+    item = load_fixture("transactions")["items"][0]
+    route = respx_mock.get("/transactions").mock(
+        return_value=httpx.Response(200, json={"items": [item], "cursor": {"next": "more"}})
+    )
+    pages = akahu_client.iter_transactions()
+    collected = [t async for t in pages]
+    assert route.call_count == 3
+    assert len(collected) == 3
+    assert pages.truncated is True
+
+
+async def test_last_page_is_not_truncated(akahu_client: Any, respx_mock: respx.MockRouter) -> None:
+    respx_mock.get("/accounts/acc_1/transactions").mock(
+        return_value=httpx.Response(200, json={"items": [], "cursor": {"next": None}})
+    )
+    pages = akahu_client.iter_account_transactions("acc_1")
+    assert [t async for t in pages] == []
+    assert pages.truncated is False

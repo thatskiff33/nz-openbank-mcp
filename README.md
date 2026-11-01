@@ -233,6 +233,14 @@ answers 403.
 Pending transactions have no id, can change before they settle, and are
 marked `"pending": true`.
 
+`txn_get_transactions` and `txn_search_transactions` read at most 2,000
+transactions (20 pages) per call. When a range holds more, the result has
+`"truncated": true`; ask again with a narrower date range.
+
+Reads are retried up to three times on network errors and Akahu server
+errors. Writes are sent once, because a request that timed out may still
+have reached Akahu.
+
 ## Dates and amounts
 
 Dates are New Zealand calendar days (`Pacific/Auckland`), even though Akahu

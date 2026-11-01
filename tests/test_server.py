@@ -576,3 +576,27 @@ def test_http_main_constructs_and_runs(fake_env: None, monkeypatch: pytest.Monke
             "uvicorn_config": {"access_log": False},
         },
     }
+
+
+async def test_server_shutdown_closes_shared_client(fake_env: None) -> None:
+    from fastmcp import Client
+
+    from nz_openbank_mcp import deps
+    from nz_openbank_mcp.server import build_server
+
+    deps._client = None
+    async with Client(build_server()) as client:
+        await client.list_tools()
+        shared = deps.get_client()
+        assert not shared._client.is_closed
+    assert shared._client.is_closed
+    assert deps._client is None
+
+
+def test_config_is_read_once_per_process(fake_env: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    from nz_openbank_mcp.config import get_config
+
+    first = get_config()
+    monkeypatch.setenv("AKAHU_READ_ONLY", "false")
+    assert get_config() is first
+    assert first.read_only is True
