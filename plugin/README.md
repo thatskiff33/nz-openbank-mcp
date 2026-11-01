@@ -65,5 +65,6 @@ shows how to load them from your OS secret store.
 
 ## Editing
 
-The JSON manifests here are generated. Change `plugin.base.toml` and run
-`scripts/sync_plugin_manifests.py` from the repo root.
+The JSON manifests here are generated. Change `plugin.base.toml`, then run
+`uv run --no-project python scripts/sync_plugin_manifests.py` from the repo
+root.
