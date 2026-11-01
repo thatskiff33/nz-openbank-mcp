@@ -534,14 +534,14 @@ def test_main_constructs_and_runs(fake_env: None, monkeypatch: pytest.MonkeyPatc
     """main() must build the server and call .run(); we verify the call site."""
     from nz_openbank_mcp import server
 
-    called: dict[str, bool] = {"run": False}
+    called: dict[str, object] = {}
 
-    def fake_run(self: object) -> None:
-        called["run"] = True
+    def fake_run(self: object, show_banner: bool | None = None) -> None:
+        called["show_banner"] = show_banner
 
     monkeypatch.setattr(server.FastMCP, "run", fake_run)
     server.main()
-    assert called["run"] is True
+    assert called == {"show_banner": False}
 
 
 def test_http_main_constructs_and_runs(fake_env: None, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -570,7 +570,7 @@ def test_http_main_constructs_and_runs(fake_env: None, monkeypatch: pytest.Monke
 
     assert called == {
         "transport": "streamable-http",
-        "show_banner": None,
+        "show_banner": False,
         "transport_kwargs": {
             "host": "127.0.0.1",
             "port": 8091,

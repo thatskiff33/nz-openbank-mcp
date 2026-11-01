@@ -162,7 +162,7 @@ def main() -> None:
     """Entry point used by the `nz-openbank-mcp` console script."""
     configure_logging(get_config().log_level)
     log_startup_banner()
-    build_server().run()
+    build_server().run(show_banner=False)
 
 
 def http_main() -> None:
@@ -180,6 +180,7 @@ def http_main() -> None:
     )
     build_http_server(http_cfg).run(
         transport="streamable-http",
+        show_banner=False,
         host=http_cfg.host,
         port=http_cfg.port,
         path=http_cfg.path,
