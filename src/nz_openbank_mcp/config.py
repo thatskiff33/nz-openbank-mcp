@@ -34,7 +34,6 @@ DEFAULT_ALLOWED_REDIRECT_URIS = (
     "https://claude.ai/api/mcp/auth_callback",
     "https://claude.com/api/mcp/auth_callback",
     "https://chatgpt.com/connector_platform_oauth_redirect",
-    "https://chatgpt.com/connector/oauth/*",
     "http://localhost:*",
     "http://127.0.0.1:*",
 )
@@ -316,7 +315,7 @@ class McpOAuthConfig(_Settings):
             "NZ_OPENBANK_MCP_ALLOWED_DOMAINS",
             "OPENBANK_MCP_ALLOWED_DOMAINS",
         ),
-        description="Comma-separated allowlist of Google Workspace domains (hd claim)",
+        description="Comma-separated allowlist of primary Google Workspace domains (hd claim)",
     )
     jwt_signing_key: SecretStr = Field(
         default=SecretStr(""),
@@ -450,6 +449,9 @@ def _validate_redirect_pattern(pattern: str) -> None:
     if "*" in host:
         raise ValueError(f"oauth redirect uri pattern must not wildcard the host: {pattern}")
     if parsed.scheme == "https":
+        # FastMCP treats an empty or "/" pattern path as "any path on this host".
+        if parsed.path in ("", "/"):
+            raise ValueError(f"oauth redirect uri pattern must include a path: {pattern}")
         return
     if parsed.scheme == "http" and host in _LOOPBACK_HOSTS:
         return

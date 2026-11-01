@@ -173,8 +173,13 @@ verified.
 ## Rotate OAuth JWT Signing Key
 
 Use this when `NZ_OPENBANK_MCP_JWT_SIGNING_KEY` is exposed or intentionally
-rotated. Rotation signs every connector out and makes stored client
-registrations undecryptable, so connectors re-register and users sign in again.
+rotated. Rotation signs every connector out and makes stored state
+undecryptable, so connectors re-register and users sign in again.
+
+`/var/lib/nz-openbank-mcp/oauth-proxy` holds client registrations, pending
+authorization codes, token mappings and the upstream Google access and refresh
+tokens, all encrypted with a key derived from the signing key. Anyone holding
+the old key and a copy of that directory (including backups) can decrypt them.
 
 1. Generate a new key:
 
@@ -185,13 +190,17 @@ registrations undecryptable, so connectors re-register and users sign in again.
 2. Stop `nz-openbank-http.service`.
 3. Replace only `NZ_OPENBANK_MCP_JWT_SIGNING_KEY` with `sudoedit
    /etc/nz-openbank-mcp/nz-openbank.env`.
-4. Optionally remove the old encrypted registrations:
+4. Remove the old encrypted state. This is required when the key was exposed:
 
    ```bash
    sudo rm -rf /var/lib/nz-openbank-mcp/oauth-proxy
    ```
 
-5. Start the service and reconnect each connector.
+5. If the key was exposed, also rotate the Google client secret (below) and ask
+   each allowed user to remove the app's access at
+   https://myaccount.google.com/permissions, which revokes the stored Google
+   refresh tokens. The server requests only `openid email profile`.
+6. Start the service and reconnect each connector.
 
 ## Rotate Google OAuth Client Secret
 

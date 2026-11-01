@@ -58,7 +58,13 @@ def durable_client_storage(state_dir: Path, signing_key: str) -> AsyncKeyValue:
     as misses, so clients re-register instead of the server failing.
     """
     directory = state_dir / "oauth-proxy"
-    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    try:
+        directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+        directory.chmod(0o700)
+    except OSError as exc:
+        raise ValueError(
+            f"NZ_OPENBANK_MCP_STATE_DIR is not writable: {state_dir} ({exc.strerror})"
+        ) from exc
     store = FileTreeStore(
         data_directory=directory,
         key_sanitization_strategy=FileTreeV1KeySanitizationStrategy(directory),
@@ -79,7 +85,8 @@ class AllowlistedGoogleOAuthProvider(GoogleProvider):
 
     Email entries match the verified email exactly. Domain entries match only
     Google's hosted-domain (hd) claim, so a consumer account registered on an
-    address at an allowed domain is refused.
+    address at an allowed domain is refused. The consent screen stays on: the
+    redirect allowlist admits any Claude or ChatGPT account, not just the owner's.
     """
 
     def __init__(
@@ -107,6 +114,7 @@ class AllowlistedGoogleOAuthProvider(GoogleProvider):
             allowed_client_redirect_uris=allowed_redirect_uris,
             client_storage=client_storage,
             jwt_signing_key=jwt_signing_key,
+            require_authorization_consent=True,
         )
 
     async def load_access_token(self, token: str) -> FastMCPAccessToken | None:

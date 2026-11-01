@@ -120,6 +120,7 @@ def _register(client: TestClient, redirect_uri: str) -> int:
         "http://claude.ai/api/mcp/auth_callback",
         "http://localhost@attacker.example/callback",
         "http://192.168.1.10:3000/callback",
+        "https://chatgpt.com/connector/oauth/abc123",
     ],
 )
 def test_unlisted_redirect_uri_is_rejected_at_registration(
@@ -141,7 +142,6 @@ def test_unlisted_redirect_uri_is_rejected_at_registration(
     [
         "https://claude.ai/api/mcp/auth_callback",
         "https://chatgpt.com/connector_platform_oauth_redirect",
-        "https://chatgpt.com/connector/oauth/abc123",
         "http://localhost:3118/callback",
         "http://127.0.0.1:50123/callback",
     ],
@@ -200,6 +200,8 @@ def test_oauth_requires_absolute_state_dir(state_dir: str) -> None:
         ("https://claude.ai/cb?x=1", "plain URL"),
         ("https://claude.ai/cb#x", "plain URL"),
         ("https:///cb", "plain URL"),
+        ("https://claude.ai", "must include a path"),
+        ("https://claude.ai/", "must include a path"),
     ],
 )
 def test_redirect_patterns_validated(patterns: str, message: str) -> None:
@@ -254,3 +256,119 @@ def test_http_server_uses_durable_storage_by_default(fake_env: None, tmp_path: P
     build_http_server(McpHttpConfig(auth_mode="oauth"), _oauth_config(state_dir=str(tmp_path)))
 
     assert (tmp_path / "oauth-proxy").is_dir()
+
+
+def test_consent_screen_stays_on() -> None:
+    assert _provider()._require_authorization_consent is True
+
+
+def _google_transport(userinfo: dict[str, object]) -> Any:
+    import httpx2
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        if request.url.host == "oauth2.googleapis.com":
+            return httpx2.Response(
+                200,
+                json={
+                    "aud": "google-client",
+                    "sub": "1234",
+                    "scope": "openid https://www.googleapis.com/auth/userinfo.email "
+                    "https://www.googleapis.com/auth/userinfo.profile",
+                    "expires_in": 3600,
+                    "email": userinfo["email"],
+                    "email_verified": "true",
+                },
+            )
+        return httpx2.Response(200, json=userinfo)
+
+    return httpx2.AsyncClient(transport=httpx2.MockTransport(handler))
+
+
+@pytest.mark.parametrize(
+    ("userinfo", "allowed"),
+    [
+        ({"email": "staff@example.org", "verified_email": True, "hd": "example.org"}, True),
+        ({"email": "staff@example.org", "verified_email": True}, False),
+        ({"email": "owner@example.com", "verified_email": True}, True),
+    ],
+)
+async def test_google_verifier_claims_drive_allowlist(
+    userinfo: dict[str, object], allowed: bool
+) -> None:
+    provider = _provider()
+    client = _google_transport(userinfo)
+    provider._token_validator._http_client = client  # type: ignore[attr-defined]
+    try:
+        access = await provider._token_validator.verify_token("upstream-token")
+    finally:
+        await client.aclose()
+
+    assert access is not None
+    assert provider._is_access_allowed(access) is allowed
+
+
+def test_http_server_storage_is_encrypted_file_store(fake_env: None, tmp_path: Path) -> None:
+    from key_value.aio.wrappers.encryption import FernetEncryptionWrapper
+
+    from nz_openbank_mcp.server import build_http_server
+
+    mcp = build_http_server(
+        McpHttpConfig(auth_mode="oauth"), _oauth_config(state_dir=str(tmp_path))
+    )
+
+    assert isinstance(mcp.auth._client_storage, FernetEncryptionWrapper)  # type: ignore[union-attr]
+
+
+def test_registrations_survive_restart_encrypted(fake_env: None, tmp_path: Path) -> None:
+    import asyncio
+    import json
+
+    from nz_openbank_mcp.server import build_http_server
+
+    cfg = McpHttpConfig(auth_mode="oauth")
+    oauth = _oauth_config(state_dir=str(tmp_path))
+    app = build_http_server(cfg, oauth).http_app(path=cfg.path, transport="streamable-http")
+    with TestClient(app) as client:
+        response = client.post(
+            "/register",
+            json={
+                "redirect_uris": ["https://claude.ai/api/mcp/auth_callback"],
+                "token_endpoint_auth_method": "none",
+                "grant_types": ["authorization_code", "refresh_token"],
+                "response_types": ["code"],
+            },
+        )
+    client_id = response.json()["client_id"]
+
+    restarted = build_http_server(cfg, oauth)
+    found = asyncio.run(restarted.auth.get_client(client_id))  # type: ignore[union-attr]
+    assert found is not None
+
+    files = [p for p in (tmp_path / "oauth-proxy").rglob("*.json") if "info" not in p.name]
+    assert files
+    for path in files:
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600
+        assert set(json.loads(path.read_text())["value"]) == {
+            "__encrypted_data__",
+            "__encryption_version__",
+        }
+
+
+def test_signing_key_whitespace_is_ignored(fake_env: None) -> None:
+    from nz_openbank_mcp.server import build_http_server
+
+    cfg = McpHttpConfig(auth_mode="oauth")
+    plain = build_http_server(cfg, _oauth_config(), oauth_client_storage=MemoryStore())
+    padded = build_http_server(
+        cfg, _oauth_config(jwt_signing_key=f"  {SIGNING_KEY}\n"), oauth_client_storage=MemoryStore()
+    )
+
+    assert plain.auth._jwt_signing_key == padded.auth._jwt_signing_key  # type: ignore[union-attr]
+
+
+def test_unwritable_state_dir_names_the_setting(tmp_path: Path) -> None:
+    blocker = tmp_path / "not-a-dir"
+    blocker.write_text("")
+
+    with pytest.raises(ValueError, match="NZ_OPENBANK_MCP_STATE_DIR is not writable"):
+        durable_client_storage(blocker, SIGNING_KEY)

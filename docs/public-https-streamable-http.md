@@ -64,14 +64,25 @@ OAuth mode refuses to start without these:
   independent of the Google client secret, so rotating that secret does not
   log anyone out. Generate it with `openssl rand -base64 48`.
 - `NZ_OPENBANK_MCP_STATE_DIR`: absolute directory for encrypted client
-  registrations. `nz-openbank-http.service` sets it to
-  `/var/lib/nz-openbank-mcp` and creates that directory via `StateDirectory=`.
+  registrations and the upstream Google tokens behind issued sessions.
+  `nz-openbank-http.service` sets it to `/var/lib/nz-openbank-mcp` and creates
+  that directory via `StateDirectory=`; the server keeps its `oauth-proxy/`
+  subdirectory at mode 0700.
+
+Upgrading from a release without these settings: earlier versions kept OAuth
+state under the service user's FastMCP data directory, encrypted with a key
+derived from the Google client secret. After the upgrade, delete it:
+
+```bash
+sudo rm -rf /var/lib/nz-openbank-mcp/.local/share/fastmcp/oauth-proxy
+```
 
 Allowlist semantics:
 
 - `NZ_OPENBANK_MCP_ALLOWED_USERS` matches the verified Google email exactly.
 - `NZ_OPENBANK_MCP_ALLOWED_DOMAINS` matches only Google's hosted-domain (`hd`)
-  claim, which Google sets for Google Workspace accounts. A consumer Google
+  claim, which Google sets to the primary domain of a Google Workspace account
+  (secondary and alias domains do not match). A consumer Google
   account registered on an address at that domain is refused. Use
   `ALLOWED_USERS` for personal Gmail accounts.
 
@@ -81,13 +92,19 @@ Client redirect URIs accepted at dynamic client registration default to:
 https://claude.ai/api/mcp/auth_callback
 https://claude.com/api/mcp/auth_callback
 https://chatgpt.com/connector_platform_oauth_redirect
-https://chatgpt.com/connector/oauth/*
 http://localhost:*
 http://127.0.0.1:*
 ```
 
 Override with a comma-separated `NZ_OPENBANK_MCP_ALLOWED_REDIRECT_URIS`. Entries
-must be `https`, or plain `http` on a loopback host; host wildcards are refused.
+must be `https` with a path, or plain `http` on a loopback host; host wildcards
+are refused. ChatGPT uses the stable callback above because the server
+advertises RFC 9207 issuer identification.
+
+The allowlist limits which platforms can receive authorization codes, not which
+accounts on them: anyone can point their own Claude or ChatGPT connector at the
+server. The consent screen is the control for that, so approve only connection
+requests you started yourself.
 Callback references:
 [Claude connector authentication](https://claude.com/docs/connectors/building/authentication),
 [OpenAI connector authentication](https://developers.openai.com/plugins/build/auth).
