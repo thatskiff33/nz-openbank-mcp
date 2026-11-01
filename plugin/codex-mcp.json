@@ -4,7 +4,7 @@
       "command": "uvx",
       "args": [
         "--from",
-        "nz-openbank-mcp==0.1.1",
+        "nz-openbank-mcp==0.1.2",
         "nz-openbank-mcp"
       ],
       "env_vars": [
