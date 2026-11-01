@@ -4,7 +4,7 @@ Notable changes per release. Full notes and downloads are on the
 [Releases page](https://github.com/thatskiff33/nz-openbank-mcp/releases).
 Versions follow [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 0.1.5 - 2026-11-02
 
 - The FastMCP startup banner is no longer printed by either entrypoint.
 - The Cursor agents OAuth callback is in the default HTTP redirect allowlist.
