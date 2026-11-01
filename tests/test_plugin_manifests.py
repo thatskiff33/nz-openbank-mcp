@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -26,3 +27,12 @@ def test_generated_manifests_are_up_to_date() -> None:
 def test_packaging_checks_pass() -> None:
     result = _run("check_packaging.py")
     assert result.returncode == 0, result.stderr
+
+
+async def test_mcpb_tool_list_matches_server(fake_env: None) -> None:
+    from nz_openbank_mcp.server import build_server
+
+    manifest = json.loads((ROOT / "mcpb" / "manifest.json").read_text(encoding="utf-8"))
+    listed = [tool["name"] for tool in manifest["tools"]]
+    served = {tool.name for tool in await build_server().list_tools()}
+    assert sorted(listed) == sorted(served)

@@ -4,12 +4,16 @@
   "display_name": "NZ Akahu MCP",
   "version": "0.1.4",
   "description": "Unofficial MCP server for the Akahu open-finance API (NZ). 14 tools, read-only by default, runs locally over stdio.",
+  "long_description": "Ask your AI assistant about your New Zealand bank accounts through Akahu open finance, using a Personal App you control. Runs locally over stdio, starts read-only, and asks before every write. Unofficial; not affiliated with Akahu or any bank.",
   "author": {
     "name": "thatskiff33",
     "email": "258212727+thatskiff33@users.noreply.github.com",
     "url": "https://github.com/thatskiff33"
   },
   "homepage": "https://github.com/thatskiff33/nz-openbank-mcp",
+  "documentation": "https://github.com/thatskiff33/nz-openbank-mcp#readme",
+  "support": "https://github.com/thatskiff33/nz-openbank-mcp/issues",
+  "icon": "icon.png",
   "repository": {
     "type": "git",
     "url": "https://github.com/thatskiff33/nz-openbank-mcp"
@@ -40,6 +44,65 @@
       }
     }
   },
+  "tools": [
+    {
+      "name": "acct_list_accounts",
+      "description": "Every connected account, with masked numbers and balances"
+    },
+    {
+      "name": "acct_get_account",
+      "description": "One account by id"
+    },
+    {
+      "name": "acct_get_account_balance",
+      "description": "Just the balance of one account"
+    },
+    {
+      "name": "acct_get_pending_transactions",
+      "description": "Unsettled transactions for one account"
+    },
+    {
+      "name": "acct_refresh_all_accounts",
+      "description": "Ask Akahu to fetch fresh data for every account (write)"
+    },
+    {
+      "name": "acct_refresh_account",
+      "description": "Ask Akahu to fetch fresh data for one account (write)"
+    },
+    {
+      "name": "txn_get_transactions",
+      "description": "Settled transactions filtered by account, dates, category or amount"
+    },
+    {
+      "name": "txn_get_transaction",
+      "description": "One transaction by id"
+    },
+    {
+      "name": "txn_get_transactions_by_ids",
+      "description": "Several transactions in one request"
+    },
+    {
+      "name": "txn_get_pending_transactions",
+      "description": "Unsettled transactions across all accounts"
+    },
+    {
+      "name": "txn_search_transactions",
+      "description": "Text search over description and merchant"
+    },
+    {
+      "name": "txn_report_transaction_issue",
+      "description": "Open a support ticket with Akahu about a transaction (write)"
+    },
+    {
+      "name": "id_get_me",
+      "description": "The Akahu user's profile"
+    },
+    {
+      "name": "id_verify_name",
+      "description": "Check a name against the account holder (write, extra scope)"
+    }
+  ],
+  "tools_generated": false,
   "user_config": {
     "akahu_user_token": {
       "type": "string",
@@ -70,6 +133,10 @@
       "required": false
     }
   },
+  "privacy_policies": [
+    "https://github.com/thatskiff33/nz-openbank-mcp/blob/main/PRIVACY.md",
+    "https://www.akahu.nz/privacy-notice"
+  ],
   "compatibility": {
     "platforms": [
       "darwin",
