@@ -1,1 +1,1 @@
-"""Tool sub-servers, mounted by the root server."""
+"""Tool sub-servers, mounted by the root server (probe)."""
