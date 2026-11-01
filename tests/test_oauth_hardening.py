@@ -202,6 +202,8 @@ def test_oauth_requires_absolute_state_dir(state_dir: str) -> None:
         ("https:///cb", "plain URL"),
         ("https://claude.ai", "must include a path"),
         ("https://claude.ai/", "must include a path"),
+        ("https://claude.ai/*", "must not wildcard the path"),
+        ("https://claude.ai/api/*/auth_callback", "must not wildcard the path"),
     ],
 )
 def test_redirect_patterns_validated(patterns: str, message: str) -> None:

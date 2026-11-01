@@ -449,9 +449,12 @@ def _validate_redirect_pattern(pattern: str) -> None:
     if "*" in host:
         raise ValueError(f"oauth redirect uri pattern must not wildcard the host: {pattern}")
     if parsed.scheme == "https":
-        # FastMCP treats an empty or "/" pattern path as "any path on this host".
+        # FastMCP treats an empty or "/" pattern path as "any path on this host",
+        # and its fnmatch "*" crosses "/", so https entries must be exact paths.
         if parsed.path in ("", "/"):
             raise ValueError(f"oauth redirect uri pattern must include a path: {pattern}")
+        if "*" in parsed.path:
+            raise ValueError(f"oauth redirect uri pattern must not wildcard the path: {pattern}")
         return
     if parsed.scheme == "http" and host in _LOOPBACK_HOSTS:
         return

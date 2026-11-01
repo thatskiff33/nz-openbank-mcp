@@ -97,8 +97,8 @@ http://127.0.0.1:*
 ```
 
 Override with a comma-separated `NZ_OPENBANK_MCP_ALLOWED_REDIRECT_URIS`. Entries
-must be `https` with a path, or plain `http` on a loopback host; host wildcards
-are refused. ChatGPT uses the stable callback above because the server
+must be `https` with an exact path (no wildcards), or plain `http` on a loopback
+host. ChatGPT uses the stable callback above because the server
 advertises RFC 9207 issuer identification.
 
 The allowlist limits which platforms can receive authorization codes, not which

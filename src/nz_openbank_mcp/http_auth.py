@@ -61,15 +61,15 @@ def durable_client_storage(state_dir: Path, signing_key: str) -> AsyncKeyValue:
     try:
         directory.mkdir(mode=0o700, parents=True, exist_ok=True)
         directory.chmod(0o700)
+        store = FileTreeStore(
+            data_directory=directory,
+            key_sanitization_strategy=FileTreeV1KeySanitizationStrategy(directory),
+            collection_sanitization_strategy=FileTreeV1CollectionSanitizationStrategy(directory),
+        )
     except OSError as exc:
         raise ValueError(
             f"NZ_OPENBANK_MCP_STATE_DIR is not writable: {state_dir} ({exc.strerror})"
         ) from exc
-    store = FileTreeStore(
-        data_directory=directory,
-        key_sanitization_strategy=FileTreeV1KeySanitizationStrategy(directory),
-        collection_sanitization_strategy=FileTreeV1CollectionSanitizationStrategy(directory),
-    )
     encryption_key = derive_jwt_key(
         low_entropy_material=signing_key, salt="nz-openbank-mcp-oauth-storage"
     )
