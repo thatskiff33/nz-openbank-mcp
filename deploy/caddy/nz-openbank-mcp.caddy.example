@@ -1,0 +1,22 @@
+# Example Caddy route for a public HTTPS OAuth deployment.
+# Replace mcp.example.com with your real hostname.
+#
+# Public connector URL after this route is:
+# https://mcp.example.com/openbank-mcp/mcp
+#
+# handle_path strips /openbank-mcp before proxying, so the backend app still serves
+# FastMCP Streamable HTTP on its internal /mcp path.
+
+mcp.example.com {
+    handle /.well-known/oauth-protected-resource/openbank-mcp/mcp {
+        reverse_proxy http://127.0.0.1:8091
+    }
+
+    handle /.well-known/oauth-authorization-server/openbank-mcp {
+        reverse_proxy http://127.0.0.1:8091
+    }
+
+    handle_path /openbank-mcp/* {
+        reverse_proxy http://127.0.0.1:8091
+    }
+}

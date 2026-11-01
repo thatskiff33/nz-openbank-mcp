@@ -1,0 +1,29 @@
+[Unit]
+Description=nz-openbank-mcp Streamable HTTP MCP server
+Documentation=https://github.com/thatskiff33/nz-openbank-mcp
+Wants=network-online.target
+After=network-online.target
+ConditionPathExists=/opt/nz-openbank-mcp/.venv/bin/nz-openbank-mcp-http
+
+[Service]
+Type=simple
+User=nz-openbank-mcp
+Group=nz-openbank-mcp
+WorkingDirectory=/opt/nz-openbank-mcp
+EnvironmentFile=/etc/nz-openbank-mcp/nz-openbank.env
+ExecStart=/opt/nz-openbank-mcp/.venv/bin/nz-openbank-mcp-http
+Restart=on-failure
+RestartSec=5s
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/nz-openbank-mcp
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictRealtime=true
+SystemCallArchitectures=native
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,25 @@
+{
+  "success": true,
+  "item": {
+    "_id": "user_test_001",
+    "access_granted_at": "2026-01-15T10:30:00.000Z",
+    "email": "fixture-user-email",
+    "preferences": {
+      "online_banking": false
+    },
+    "profile": {
+      "first_name": "Fixture",
+      "last_name": "Person",
+      "phone": {
+        "verified": true,
+        "number": "not-a-real-phone"
+      },
+      "address": {
+        "street": "Synthetic Street",
+        "city": "Fixture City",
+        "postcode": "0000",
+        "country": "NZ"
+      }
+    }
+  }
+}

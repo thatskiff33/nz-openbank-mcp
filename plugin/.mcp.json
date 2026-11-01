@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "akahu": {
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/thatskiff33/nz-openbank-mcp", "nz-openbank-mcp"],
+      "env": {
+        "AKAHU_USER_TOKEN": "${user_config.akahu_user_token}",
+        "AKAHU_APP_TOKEN": "${user_config.akahu_app_token}",
+        "AKAHU_READ_ONLY": "${user_config.akahu_read_only}",
+        "AKAHU_AUTOMATION_BYPASS": "${user_config.akahu_automation_bypass}"
+      }
+    }
+  }
+}
