@@ -232,6 +232,20 @@ Desktop instead of the extension, merge it into the config file and restart:
 - Windows: `%APPDATA%\Claude\claude_desktop_config.json`
 - Linux: `~/.config/Claude/claude_desktop_config.json`
 
+### Docker
+
+Each release is also published as a multi-arch image (amd64 and arm64), running
+as a non-root user with read-only mode on:
+
+```bash
+docker run -i --rm -e AKAHU_USER_TOKEN -e AKAHU_APP_TOKEN ghcr.io/thatskiff33/nz-openbank-mcp
+```
+
+`-e NAME` with no value passes the variable through from your shell, so the
+tokens stay out of the command line. For a JSON-configured client, use
+`"command": "docker"` with those arguments. For the HTTP server, run
+`nz-openbank-mcp-http` in the image; see the HTTPS guide.
+
 ## Settings
 
 The server reads settings from its process environment, plus an env file only

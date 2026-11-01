@@ -204,6 +204,25 @@ Expected same-host listener:
 Unexpected listeners such as `0.0.0.0:8091` or `[::]:8091` are deployment
 failures.
 
+## Container
+
+The release image runs the same HTTP server. Keep the env files from Host
+Settings on the host, bind inside the container on all interfaces, publish the
+port only on loopback or a private interface, and keep OAuth state on a volume:
+
+```bash
+docker run -d --name nz-openbank-http --restart unless-stopped \
+  --env-file /etc/nz-openbank-mcp/nz-openbank.env \
+  --env-file /etc/nz-openbank-mcp/nz-openbank-http.env \
+  -e NZ_OPENBANK_MCP_HTTP_HOST=0.0.0.0 \
+  -p 127.0.0.1:8091:8091 \
+  -v nz-openbank-state:/var/lib/nz-openbank-mcp \
+  --read-only --cap-drop ALL --security-opt no-new-privileges \
+  ghcr.io/thatskiff33/nz-openbank-mcp:X.Y.Z nz-openbank-mcp-http
+```
+
+The image sets `NZ_OPENBANK_MCP_STATE_DIR=/var/lib/nz-openbank-mcp`.
+
 ## Caddy Route
 
 Merge `deploy/caddy/nz-openbank-mcp.caddy.example` into the Caddy site that owns

@@ -109,6 +109,10 @@ Jobs:
   `.mcpb` to the GitHub Release. It is the only job with repository write access.
 - `publish` (release only) waits for `pypi` environment approval, then
   publishes to PyPI.
+- `publish-image` (release only, after `publish`) builds the amd64 and arm64
+  image, pushes it to `ghcr.io/thatskiff33/nz-openbank-mcp` tagged `X.Y.Z`,
+  `X.Y` and `latest`, and attests its provenance. The first push creates the
+  package as private; set it to public once under the package's settings.
 - `publish-registry` (release only, after `publish`) verifies a pinned
   `mcp-publisher` with cosign, logs in with GitHub OIDC and publishes
   `server.json` to the [MCP Registry](https://registry.modelcontextprotocol.io).
