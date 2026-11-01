@@ -281,6 +281,8 @@ Licensed under Apache-2.0; see [`LICENSE`](https://github.com/thatskiff33/nz-ope
 Derived from [nz-akahu-mcp](https://github.com/severity1/nz-akahu-mcp) by
 severity1 (Apache-2.0) and substantially modified; see
 [`NOTICE`](https://github.com/thatskiff33/nz-openbank-mcp/blob/main/NOTICE).
+Thank you to severity1 for building and open-sourcing the original, which
+this project would not exist without.
 
 This software is provided as is. You are responsible for how you use it with
 your financial data. The maintainers accept no liability for data loss,
