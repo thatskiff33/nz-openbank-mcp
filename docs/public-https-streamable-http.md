@@ -95,6 +95,8 @@ Client redirect URIs accepted at dynamic client registration default to:
 https://claude.ai/api/mcp/auth_callback
 https://claude.com/api/mcp/auth_callback
 https://chatgpt.com/connector_platform_oauth_redirect
+https://cursor.com/agents/mcp/oauth/callback
+https://www.cursor.com/agents/mcp/oauth/callback
 http://localhost:*
 http://127.0.0.1:*
 ```
