@@ -17,7 +17,8 @@ Python 3.14 or newer is required.
 
 ## Checks
 
-Every pull request must pass these, and CI runs the same ones:
+Every pull request must pass these; CI runs them along with bandit and a
+test run on the next Python release:
 
 ```bash
 uv run pytest                                   # tests, 100% line and branch coverage
@@ -26,6 +27,8 @@ uv run mypy src                                 # strict
 uv export --frozen --no-emit-project --all-extras --format requirements-txt \
   | uv run pip-audit --strict --disable-pip --require-hashes -r /dev/stdin
 uv run --no-project python scripts/sync_plugin_manifests.py --check
+uv run --no-project python scripts/check_packaging.py   # version lockstep, package contents
+uv run --no-project python scripts/check_md_links.py    # repo-relative Markdown links resolve
 ```
 
 Coverage is a hard gate: a change that leaves any line or branch untested
@@ -46,14 +49,17 @@ transactions, names or email addresses.
 
 ## Plugin manifests and versions
 
-The host plugins under `plugin/` and the Desktop Extension in `mcpb/` are
-generated from `plugin/plugin.base.toml`. Edit that file, then run
+The host plugin manifests under `plugin/`, the root marketplace indexes
+(`.claude-plugin/`, `.agents/plugins/`, `.cursor-plugin/`, `.grok-plugin/`)
+and `mcpb/manifest.json` are generated from `plugin/plugin.base.toml`. Edit
+that file, then run
 `uv run --no-project python scripts/sync_plugin_manifests.py` and commit the
 result.
 
 The version lives in two places that must match: `version` in
-`pyproject.toml` and `__version__` in `src/nz_openbank_mcp/__init__.py`. The
-sync script copies it into every manifest. Releases are cut by the
+`pyproject.toml` and `__version__` in `src/nz_openbank_mcp/__init__.py`
+(`check_packaging.py` enforces this). The sync script copies it into every
+manifest. Releases are cut by the
 maintainer; see [PUBLISHING.md](https://github.com/thatskiff33/nz-openbank-mcp/blob/main/PUBLISHING.md).
 
 ## Style

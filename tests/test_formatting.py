@@ -298,3 +298,29 @@ def test_models_parse_json_floats_exactly() -> None:
     assert balance.current == Decimal("0.1")
     assert balance.available == Decimal("1.005")
     assert balance.limit == Decimal("7.10")
+
+
+@pytest.mark.parametrize(
+    ("value", "cents"),
+    [
+        ("1.00499999", "1.00"),
+        ("1.00500001", "1.01"),
+        ("-1.00500001", "-1.01"),
+        ("123456789.125", "123456789.12"),
+        ("123456789.135", "123456789.14"),
+        ("-987654321.015", "-987654321.02"),
+    ],
+)
+def test_rounding_near_half_and_at_large_magnitudes(value: str, cents: str) -> None:
+    from nz_openbank_mcp.formatting import to_cents
+
+    assert to_cents(Decimal(value)) == Decimal(cents)
+    assert to_cents(float(value)) == Decimal(cents)
+
+
+def test_money_number_never_returns_negative_zero() -> None:
+    import math
+
+    from nz_openbank_mcp.formatting import money_number
+
+    assert math.copysign(1.0, money_number(Decimal("-0.001"))) == 1.0

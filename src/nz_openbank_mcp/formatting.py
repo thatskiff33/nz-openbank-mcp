@@ -34,8 +34,8 @@ def to_cents(amount: float | int | Decimal) -> Decimal:
 
 
 def money_number(amount: Decimal) -> float:
-    """`amount` rounded to cents, as a JSON number."""
-    return float(to_cents(amount))
+    """`amount` rounded to cents, as a JSON number (never -0.0)."""
+    return float(to_cents(amount)) or 0.0
 
 
 def format_money(amount: float | int | Decimal, currency: str | None = "NZD") -> str:

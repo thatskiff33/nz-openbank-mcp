@@ -22,16 +22,16 @@ select = [
     "PIE",   # flake8-pie
 ]
 ignore = [
-    # ToolError messages are what the user and model read; they carry the
-    # detail at the raise site by design.
+    # Exception messages carry their detail at the raise site; ToolError text
+    # is what the user and model read.
     "TRY003",
 ]
 
 [lint.per-file-ignores]
 # MCP tool signatures mirror Akahu's request parameters one for one.
 "src/nz_openbank_mcp/tools/*.py" = ["PLR0913", "PLR0917"]
-# Release checkers are linear lists of independent checks.
-"scripts/*.py" = ["PLR0912"]
+# A linear list of independent release checks.
+"scripts/check_packaging.py" = ["PLR0912"]
 "tests/**/*.py" = [
     "B011",
     "S101",    # pytest asserts

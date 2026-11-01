@@ -48,6 +48,8 @@ def _integral(value: object) -> object:
 
 Limit = Annotated[int, Field(ge=1, le=500, strict=True), BeforeValidator(_integral)]
 
+AmountBound = Annotated[float, Field(allow_inf_nan=False)]
+
 SEARCH_DEFAULT_DAYS = 90
 
 
@@ -99,8 +101,8 @@ async def get_transactions(
     start_date: str | None = None,
     end_date: str | None = None,
     category: str | None = None,
-    min_amount: float | None = None,
-    max_amount: float | None = None,
+    min_amount: AmountBound | None = None,
+    max_amount: AmountBound | None = None,
     limit: Limit = 100,
 ) -> dict[str, Any]:
     """List settled transactions with optional filters.

@@ -148,7 +148,8 @@ The HTTP entrypoint adds two settings classes, read only by `http_main`:
   `NZ_OPENBANK_MCP_ALLOWED_USERS` and `_ALLOWED_DOMAINS` (Google-verified
   email, hosted-domain checked), `NZ_OPENBANK_MCP_JWT_SIGNING_KEY`,
   `NZ_OPENBANK_MCP_STATE_DIR` (durable client and token storage), and
-  `NZ_OPENBANK_MCP_ALLOWED_REDIRECT_URIS` (replaces the default host list).
+  `NZ_OPENBANK_MCP_ALLOWED_REDIRECT_URIS` (replaces the default redirect URI
+  list).
 
 `.env.example` lists every setting; `docs/public-https-streamable-http.md`
 covers deployment.
