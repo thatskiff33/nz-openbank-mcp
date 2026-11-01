@@ -1,6 +1,6 @@
 {
   "name": "nz-openbank-mcp",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Unofficial MCP server for the Akahu open-finance API (NZ). 14 tools, read-only by default, runs locally over stdio.",
   "author": {
     "name": "thatskiff33",
@@ -54,7 +54,7 @@
       "command": "uvx",
       "args": [
         "--from",
-        "nz-openbank-mcp==0.1.4",
+        "nz-openbank-mcp==0.1.5",
         "nz-openbank-mcp"
       ],
       "env": {

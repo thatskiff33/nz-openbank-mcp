@@ -3,7 +3,7 @@
   "name": "io.github.thatskiff33/nz-openbank-mcp",
   "title": "NZ Open Banking (Akahu)",
   "description": "Ask about your NZ bank accounts via Akahu open finance. Read-only by default, consent per write.",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "websiteUrl": "https://github.com/thatskiff33/nz-openbank-mcp",
   "repository": {
     "url": "https://github.com/thatskiff33/nz-openbank-mcp",
@@ -20,7 +20,7 @@
       "registryType": "pypi",
       "registryBaseUrl": "https://pypi.org",
       "identifier": "nz-openbank-mcp",
-      "version": "0.1.4",
+      "version": "0.1.5",
       "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"
