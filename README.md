@@ -372,6 +372,10 @@ run `uv run --no-project python scripts/sync_plugin_manifests.py`. Releases
 are described in [`PUBLISHING.md`](https://github.com/thatskiff33/nz-openbank-mcp/blob/main/PUBLISHING.md); further operator guides are
 in [`docs/`](https://github.com/thatskiff33/nz-openbank-mcp/tree/main/docs).
 
+Contributions are welcome: see [CONTRIBUTING.md](https://github.com/thatskiff33/nz-openbank-mcp/blob/main/CONTRIBUTING.md), the
+[code of conduct](https://github.com/thatskiff33/nz-openbank-mcp/blob/main/CODE_OF_CONDUCT.md) and the [changelog](https://github.com/thatskiff33/nz-openbank-mcp/blob/main/CHANGELOG.md).
+Ask questions in [Discussions](https://github.com/thatskiff33/nz-openbank-mcp/discussions).
+
 ## License and disclaimer
 
 Licensed under Apache-2.0; see [`LICENSE`](https://github.com/thatskiff33/nz-openbank-mcp/blob/main/LICENSE).
