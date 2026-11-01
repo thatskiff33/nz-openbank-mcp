@@ -85,13 +85,18 @@ Already done for this repository; repeat only if it is moved or renamed.
    TestPyPI never accepts the same version twice; a failed dry run after a
    successful upload needs a new patch version.
 
-4. **Publish the GitHub Release** for the tag:
+4. **Publish** from the tag. The release notes come from the
+   `## X.Y.Z - <date>` section of `CHANGELOG.md`:
 
    ```bash
-   gh release create vX.Y.Z --verify-tag --generate-notes
+   gh workflow run release.yml --ref vX.Y.Z -f publish=true
    ```
 
 5. **Approve the `pypi` deployment** in the Actions run when it pauses.
+
+Do not create the GitHub Release by hand. Releases are immutable once
+published, so the workflow creates it as a draft, attaches the files and only
+then publishes it.
 
 Jobs:
 
@@ -101,19 +106,21 @@ Jobs:
   cannot be released.
 - `build` asserts the pyproject version matches the tag, runs
   `scripts/check_packaging.py`, then `uv build`.
-- `publish-testpypi` (dispatch only) uploads to TestPyPI.
+- `publish-testpypi` (dry run only) uploads to TestPyPI.
 - `build-mcpb` packs `nz-openbank-mcp-X.Y.Z.mcpb` with a pinned
   `@anthropic-ai/mcpb`, asserts the manifest version matches the tag, and
   checks the packed manifest matches `mcpb/manifest.json`.
-- `upload-assets` (release only, after `publish`) attaches the wheel, sdist and
-  `.mcpb` to the GitHub Release. It is the only job with repository write access.
-- `publish` (release only) waits for `pypi` environment approval, then
+- `github-release` (publish only, after `publish`) attests the wheel, sdist and
+  `.mcpb`, creates the GitHub Release as a draft with those files and the
+  changelog section as notes, then publishes it as the latest release. It is
+  the only job with repository write access.
+- `publish` (publish only) waits for `pypi` environment approval, then
   publishes to PyPI.
-- `publish-image` (release only, after `publish`) builds the amd64 and arm64
+- `publish-image` (publish only, after `publish`) builds the amd64 and arm64
   image, pushes it to `ghcr.io/thatskiff33/nz-openbank-mcp` tagged `X.Y.Z`,
   `X.Y` and `latest`, and attests its provenance. The first push creates the
   package as private; set it to public once under the package's settings.
-- `publish-registry` (release only, after `publish`) verifies a pinned
+- `publish-registry` (publish only, after `publish`) verifies a pinned
   `mcp-publisher` with cosign, logs in with GitHub OIDC and publishes
   `server.json` to the [MCP Registry](https://registry.modelcontextprotocol.io).
   The registry confirms ownership through the `mcp-name:` comment in

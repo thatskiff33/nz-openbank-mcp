@@ -4,7 +4,14 @@ Notable changes per release. Full notes and downloads are on the
 [Releases page](https://github.com/thatskiff33/nz-openbank-mcp/releases).
 Versions follow [Semantic Versioning](https://semver.org/).
 
+## 0.1.6 - 2026-11-02
+
+- GitHub Releases are created by the release workflow with the wheel, sdist and `.mcpb` attached before publishing, since releases are immutable once published.
+- Same package contents as 0.1.5.
+
 ## 0.1.5 - 2026-11-02
+
+The 0.1.5 GitHub Release has no files attached. Its package is on PyPI and GHCR; for the `.mcpb`, use 0.1.6.
 
 - The FastMCP startup banner is no longer printed by either entrypoint.
 - The Cursor agents OAuth callback is in the default HTTP redirect allowlist.

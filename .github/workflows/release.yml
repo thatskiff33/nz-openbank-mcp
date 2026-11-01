@@ -1,10 +1,11 @@
 # Build, gate, and publish a tagged release.
 #
 # Trust model:
-#   - `release: published` builds the wheel, sdist and .mcpb, attaches them to
-#     the GitHub Release, and publishes to PyPI.
-#   - `workflow_dispatch` run from a v* tag is the TestPyPI dry run: same gate
-#     and build, publishes to TestPyPI only.
+#   - Run by `workflow_dispatch` from a v* tag. With `publish` unset it is the
+#     TestPyPI dry run. With `publish` set it publishes to PyPI, then creates
+#     the GitHub Release as a draft, attaches the wheel, sdist and .mcpb, and
+#     publishes it. Releases are immutable once published, so assets must be
+#     attached while the release is still a draft.
 #   - The tagged commit must be on main with a successful ci.yml push run.
 #   - PyPI and TestPyPI authenticate via Trusted Publishing (OIDC); no API
 #     tokens are stored. See PUBLISHING.md for the one-time setup.
@@ -17,15 +18,18 @@
 name: release
 
 on:
-  release:
-    types: [published]
   workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish to PyPI and create the GitHub Release (unset is the TestPyPI dry run)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.event_name }}-${{ github.ref_name }}
+  group: release-${{ inputs.publish }}-${{ github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -171,17 +175,22 @@ jobs:
           path: dist/*.mcpb
           if-no-files-found: error
 
-  upload-assets:
-    name: attach wheel, sdist and .mcpb to the GitHub Release
+  github-release:
+    name: publish the GitHub Release with wheel, sdist and .mcpb
     needs: [build, build-mcpb, publish]
-    if: github.event_name == 'release'
+    if: inputs.publish
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
-      contents: write # gh release upload attaches assets to this Release
+      contents: write # create the Release and attach its assets
       id-token: write # Sigstore signing for build provenance
       attestations: write # store provenance for the wheel, sdist and .mcpb
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
       - name: download package artefacts
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -199,17 +208,26 @@ jobs:
         with:
           subject-path: dist/*
 
-      - name: upload to GitHub Release
+      - name: create draft, attach assets, publish
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release upload "${GITHUB_REF_NAME}" dist/* \
-            --repo "$GITHUB_REPOSITORY" --clobber
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          awk -v head="## ${version} " 'index($0, head) == 1 {on = 1; next} /^## / {on = 0} on' \
+            CHANGELOG.md > notes.md
+          if ! grep -q '[^[:space:]]' notes.md; then
+            echo "CHANGELOG.md has no '## ${version} - <date>' section"
+            exit 1
+          fi
+          gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" \
+            --verify-tag --draft --title "$GITHUB_REF_NAME" --notes-file notes.md
+          gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --latest
 
   publish-testpypi:
     name: publish to TestPyPI (dry run)
     needs: build
-    if: github.event_name == 'workflow_dispatch'
+    if: ${{ !inputs.publish }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment:
@@ -232,7 +250,7 @@ jobs:
   publish:
     name: publish to PyPI
     needs: build
-    if: github.event_name == 'release'
+    if: inputs.publish
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment:
@@ -253,7 +271,7 @@ jobs:
   publish-registry:
     name: publish server.json to the MCP Registry
     needs: publish
-    if: github.event_name == 'release'
+    if: inputs.publish
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -307,7 +325,7 @@ jobs:
   publish-image:
     name: publish container image to GHCR
     needs: publish
-    if: github.event_name == 'release'
+    if: inputs.publish
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
