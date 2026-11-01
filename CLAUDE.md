@@ -23,6 +23,8 @@ uv run pytest tests/test_accounts.py::test_list_accounts_returns_masked  # one t
 uv run pytest -k "currency"            # filter by name
 uv run ruff check .                    # lint (must be clean)
 uv run mypy src                        # strict-mode type check (must be clean)
+uv export --frozen --no-emit-project --all-extras --format requirements-txt \
+  | uv run pip-audit --strict --disable-pip --require-hashes -r /dev/stdin  # audit the lock
 uv build                               # sdist + wheel into dist/
 uv run nz-openbank-mcp                    # run server over stdio from local checkout
 uv run fastmcp dev src/nz_openbank_mcp/server.py  # FastMCP inspector
@@ -30,7 +32,12 @@ uv run fastmcp dev src/nz_openbank_mcp/server.py  # FastMCP inspector
 
 The pytest config (`pyproject.toml [tool.pytest.ini_options]`) enforces
 `--cov-fail-under=100` on **line AND branch** coverage. Any patch that drops
-coverage below 100% fails the build. Mypy runs in `strict` mode.
+coverage below 100% fails the build. Mypy runs in `strict` mode. A
+`DeprecationWarning` raised from `nz_openbank_mcp` or `tests` fails the suite.
+
+Python is 3.14+. Runtime dependencies carry major-version caps because `uvx`
+ignores `uv.lock` and resolves fresh on every launch; `sse-starlette!=3.4.6`
+excludes a known-bad transitive release.
 
 ## Architecture
 

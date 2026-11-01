@@ -97,7 +97,8 @@ uv run ruff check .
 uv run mypy src
 uv run pytest
 uv run bandit -r src
-uv run pip-audit
+uv export --frozen --no-emit-project --all-extras --format requirements-txt \
+  | uv run pip-audit --strict --disable-pip --require-hashes -r /dev/stdin
 ```
 
 `uv run pytest` enforces 100% line and branch coverage for the Python package.

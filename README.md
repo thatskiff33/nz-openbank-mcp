@@ -35,7 +35,7 @@ not at Google OAuth endpoints.
 ## Prerequisites
 
 1. **Akahu Personal App + User token** - register at https://my.akahu.nz/developers
-2. **[`uv`](https://docs.astral.sh/uv/)** for the `uvx` runner (or pip with a virtualenv)
+2. **[`uv`](https://docs.astral.sh/uv/)** for the `uvx` runner (or pip with a Python 3.14+ virtualenv). `uvx` downloads a matching Python automatically.
 3. **[Claude Code](https://docs.claude.com/en/docs/claude-code/overview)**,
    **[Claude Desktop](https://claude.ai/download)**, or another MCP client
 4. For web custom connectors: a public HTTPS hostname, a Google Cloud project,
