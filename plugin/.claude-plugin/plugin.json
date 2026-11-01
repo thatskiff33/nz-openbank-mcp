@@ -4,20 +4,30 @@
   "description": "Unofficial MCP server for the Akahu open-finance API (NZ). 14 tools, read-only by default, runs locally over stdio.",
   "author": {
     "name": "thatskiff33",
-    "email": "258212727+thatskiff33@users.noreply.github.com"
+    "email": "258212727+thatskiff33@users.noreply.github.com",
+    "url": "https://github.com/thatskiff33"
   },
   "homepage": "https://github.com/thatskiff33/nz-openbank-mcp",
+  "repository": "https://github.com/thatskiff33/nz-openbank-mcp",
+  "license": "Apache-2.0",
+  "keywords": [
+    "mcp",
+    "akahu",
+    "open-finance",
+    "new-zealand",
+    "banking"
+  ],
   "userConfig": {
     "akahu_user_token": {
       "type": "string",
       "title": "Akahu User Token",
-      "description": "User token from https://my.akahu.nz/developers. Stored in your OS keychain (macOS Keychain / Windows Credential Manager).",
+      "description": "User token from https://my.akahu.nz/developers.",
       "sensitive": true
     },
     "akahu_app_token": {
       "type": "string",
       "title": "Akahu App Token",
-      "description": "App token from https://my.akahu.nz/developers. Stored in your OS keychain (macOS Keychain / Windows Credential Manager).",
+      "description": "App token from https://my.akahu.nz/developers.",
       "sensitive": true
     },
     "akahu_read_only": {
