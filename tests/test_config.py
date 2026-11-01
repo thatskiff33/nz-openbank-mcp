@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
-
 import pytest
 from pydantic import ValidationError
 
@@ -31,7 +29,7 @@ SIGNING_KEY = "jwt_signing_key_test_0123456789abcdef"
 
 
 @pytest.fixture
-def clean_oauth_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+def clean_oauth_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Remove OAuth env vars that could be present on a developer host.
 
     Signing key and state dir are set so each test varies only what it covers.
@@ -40,7 +38,6 @@ def clean_oauth_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
         monkeypatch.delenv(key, raising=False)
     monkeypatch.setenv("NZ_OPENBANK_MCP_JWT_SIGNING_KEY", SIGNING_KEY)
     monkeypatch.setenv("NZ_OPENBANK_MCP_STATE_DIR", "/var/lib/nz-openbank-mcp")
-    yield
 
 
 def test_loads_from_env(fake_env: None) -> None:

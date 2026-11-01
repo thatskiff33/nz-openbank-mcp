@@ -160,16 +160,16 @@ class AkahuClient:
 
             logger.info("%s %s -> %d", method, path, response.status_code)
 
-            if response.status_code < 400:
+            if response.status_code < httpx.codes.BAD_REQUEST:
                 return self._json_object(response, method, path)
 
-            if response.status_code == 429 and not last_attempt:
+            if response.status_code == httpx.codes.TOO_MANY_REQUESTS and not last_attempt:
                 delay = self._retry_after_seconds(response, default=_BASE_BACKOFF * (2**attempt))
                 logger.warning("%s %s rate-limited; sleeping %.1fs", method, path, delay)
                 await asyncio.sleep(delay)
                 continue
 
-            if 500 <= response.status_code < 600 and retry_failures and not last_attempt:
+            if response.is_server_error and retry_failures and not last_attempt:
                 logger.warning(
                     "%s %s server error %d; attempt %d/%d",
                     method,

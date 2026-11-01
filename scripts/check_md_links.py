@@ -25,8 +25,13 @@ SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
 
 
 def tracked_markdown() -> list[Path]:
+    # git from PATH, as in CI.
     out = subprocess.run(
-        ["git", "ls-files", "*.md"], cwd=ROOT, check=True, capture_output=True, text=True
+        ["git", "ls-files", "*.md"],  # noqa: S607
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
     ).stdout
     return [ROOT / line for line in out.splitlines() if line]
 

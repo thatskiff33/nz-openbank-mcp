@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from decimal import Decimal
 
 import pytest
 
@@ -231,5 +232,69 @@ def test_parse_iso_date_with_offset() -> None:
 def test_parse_iso_date_invalid_raises() -> None:
     from nz_openbank_mcp.formatting import parse_iso_date
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="isoformat"):
         parse_iso_date("not a date")
+
+
+# ---------- money rounding ----------
+
+HALF_CENTS = [Decimal(n) / 1000 for n in range(-20_005, 20_006, 10)]
+
+
+def test_sweep_covers_only_half_cent_boundaries() -> None:
+    assert HALF_CENTS[0] == Decimal("-20.005")
+    assert all(str(d).endswith("5") and d.as_tuple().exponent == -3 for d in HALF_CENTS)
+
+
+@pytest.mark.parametrize("value", HALF_CENTS, ids=str)
+def test_half_cent_rounds_to_the_even_cent(value: Decimal) -> None:
+    from nz_openbank_mcp.formatting import to_cents
+
+    cents = to_cents(value)
+    assert abs(cents - value) == Decimal("0.005")
+    assert int(cents * 100) % 2 == 0
+
+
+def test_half_cent_from_float_matches_from_decimal() -> None:
+    from nz_openbank_mcp.formatting import to_cents
+
+    for value in HALF_CENTS:
+        assert to_cents(float(value)) == to_cents(value), value
+
+
+def test_known_float_traps_round_as_written() -> None:
+    from nz_openbank_mcp.formatting import format_money, money_number, to_cents
+
+    # 2.675 and 1.005 are stored just below the half in binary.
+    assert to_cents(2.675) == Decimal("2.68")
+    assert to_cents(1.005) == Decimal("1.00")
+    assert to_cents(1.015) == Decimal("1.02")
+    assert format_money(2.675) == "$2.68"
+    assert money_number(Decimal("-0.125")) == -0.12
+    assert money_number(Decimal("12.345")) == 12.34
+
+
+def test_money_number_agrees_with_display() -> None:
+    from nz_openbank_mcp.formatting import format_money, money_number
+
+    for value in HALF_CENTS:
+        shown = format_money(value, None).replace(",", "")
+        assert money_number(value) == float(shown), value
+
+
+def test_to_decimal_is_exact() -> None:
+    from nz_openbank_mcp.formatting import to_decimal
+
+    assert to_decimal(0.1) == Decimal("0.1")
+    assert to_decimal(-82.45) == Decimal("-82.45")
+    assert to_decimal(5) == Decimal(5)
+    assert to_decimal(Decimal("1.005")) == Decimal("1.005")
+
+
+def test_models_parse_json_floats_exactly() -> None:
+    from nz_openbank_mcp.models import Balance
+
+    balance = Balance.model_validate({"current": 0.1, "available": 1.005, "limit": "7.10"})
+    assert balance.current == Decimal("0.1")
+    assert balance.available == Decimal("1.005")
+    assert balance.limit == Decimal("7.10")

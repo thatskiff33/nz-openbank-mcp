@@ -7,9 +7,23 @@ All models use `extra="ignore"`.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from decimal import Decimal
+from typing import Annotated, Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
+
+from nz_openbank_mcp.formatting import to_decimal
+
+
+def _exact_decimal(value: object) -> object:
+    # JSON numbers arrive as floats; repr gives the shortest digits that
+    # round-trip, which are the digits Akahu sent.
+    if isinstance(value, float):
+        return to_decimal(value)
+    return value
+
+
+Money = Annotated[Decimal, BeforeValidator(_exact_decimal)]
 
 
 class _Base(BaseModel):
@@ -34,9 +48,9 @@ class Connection(_Base):
 
 class Balance(_Base):
     currency: str = "NZD"
-    current: float
-    available: float | None = None
-    limit: float | None = None
+    current: Money
+    available: Money | None = None
+    limit: Money | None = None
     overdrawn: bool | None = None
 
 
@@ -97,8 +111,8 @@ class Transaction(_Base):
     connection: str | None = Field(default=None, alias="_connection")
     date: datetime
     description: str
-    amount: float
-    balance: float | None = None
+    amount: Money
+    balance: Money | None = None
     type: str
     hash: str | None = None
     updated_at: datetime | None = None
@@ -116,7 +130,7 @@ class PendingTransaction(_Base):
     connection: str | None = Field(default=None, alias="_connection")
     date: datetime
     description: str
-    amount: float
+    amount: Money
     type: str
     updated_at: datetime | None = None
     merchant: Merchant | None = None

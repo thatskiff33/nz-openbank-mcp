@@ -772,3 +772,14 @@ async def test_reaching_limit_before_cap_is_not_truncated(
     result = await search_transactions(query="foo", limit=3)
     assert len(result["transactions"]) == 3
     assert result["truncated"] is False
+
+
+async def test_amount_filters_compare_exactly(fake_env: None, patched_client: MagicMock) -> None:
+    from nz_openbank_mcp.tools.transactions import get_transactions
+
+    txns = [_txn(_id="a", amount=-10.005), _txn(_id="b", amount=-10.01)]
+    patched_client.iter_transactions = MagicMock(side_effect=lambda **_: _async_iter(txns))
+    result = await get_transactions(min_amount=-10.005)
+    assert [t["id"] for t in result["transactions"]] == ["a"]
+    assert result["transactions"][0]["amount_raw"] == -10.0
+    assert result["transactions"][0]["amount"] == "-$10.00"

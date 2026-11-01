@@ -135,7 +135,23 @@ Settings come from the process environment. An env file loads only when
 `AKAHU_ENV_FILE` gives an absolute path, and no settings class reads a
 working-directory `.env`. `AKAHU_BASE_URL` must stay on `https://api.akahu.io`
 unless `AKAHU_ALLOW_CUSTOM_BASE_URL=true` is a real environment variable; the
-flag is ignored in files.
+flag is ignored in files. `config.get_config()` reads `AkahuConfig` once per
+process; the safety layer, client and banner all use it.
+
+The HTTP entrypoint adds two settings classes, read only by `http_main`:
+
+- `McpHttpConfig`: `NZ_OPENBANK_MCP_AUTH_MODE` (`bearer` or `oauth`),
+  `NZ_OPENBANK_MCP_BEARER_TOKEN`, and `NZ_OPENBANK_MCP_HTTP_HOST`, `_PORT`
+  and `_PATH`.
+- `McpOAuthConfig` (oauth mode): `NZ_OPENBANK_MCP_GOOGLE_CLIENT_ID` and
+  `_SECRET`, `NZ_OPENBANK_MCP_PUBLIC_BASE_URL`, the sign-in allowlist
+  `NZ_OPENBANK_MCP_ALLOWED_USERS` and `_ALLOWED_DOMAINS` (Google-verified
+  email, hosted-domain checked), `NZ_OPENBANK_MCP_JWT_SIGNING_KEY`,
+  `NZ_OPENBANK_MCP_STATE_DIR` (durable client and token storage), and
+  `NZ_OPENBANK_MCP_ALLOWED_REDIRECT_URIS` (replaces the default host list).
+
+`.env.example` lists every setting; `docs/public-https-streamable-http.md`
+covers deployment.
 
 ## Tests
 

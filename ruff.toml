@@ -3,15 +3,42 @@ target-version = "py314"
 
 [lint]
 select = [
-    "E",   # pycodestyle errors
-    "F",   # pyflakes
-    "I",   # isort
-    "B",   # flake8-bugbear
-    "UP",  # pyupgrade
-    "SIM", # flake8-simplify
-    "RET", # flake8-return
-    "N",   # pep8-naming
+    "E",     # pycodestyle errors
+    "F",     # pyflakes
+    "I",     # isort
+    "B",     # flake8-bugbear
+    "UP",    # pyupgrade
+    "SIM",   # flake8-simplify
+    "RET",   # flake8-return
+    "N",     # pep8-naming
+    "S",     # flake8-bandit
+    "ASYNC", # flake8-async
+    "PT",    # flake8-pytest-style
+    "PL",    # pylint
+    "PERF",  # perflint
+    "RUF",   # ruff-specific
+    "TRY",   # tryceratops
+    "C4",    # flake8-comprehensions
+    "PIE",   # flake8-pie
+]
+ignore = [
+    # ToolError messages are what the user and model read; they carry the
+    # detail at the raise site by design.
+    "TRY003",
 ]
 
 [lint.per-file-ignores]
-"tests/**/*.py" = ["B011"]
+# MCP tool signatures mirror Akahu's request parameters one for one.
+"src/nz_openbank_mcp/tools/*.py" = ["PLR0913", "PLR0917"]
+# Release checkers are linear lists of independent checks.
+"scripts/*.py" = ["PLR0912"]
+"tests/**/*.py" = [
+    "B011",
+    "S101",    # pytest asserts
+    "S105",    # synthetic tokens in fixtures
+    "S106",
+    "PLC0415", # imports inside tests run after the env fixtures are applied
+    "PLR2004", # expected values are literal by intent
+    "PLR0913", # pytest fixtures arrive as arguments
+    "PLR0917",
+]

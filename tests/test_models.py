@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 
 from tests.conftest import load_fixture
 
@@ -24,7 +25,7 @@ def test_account_aliases_and_balance() -> None:
     acc = Account.model_validate(load_fixture("accounts")["items"][0])
     assert acc.id == "acc_chq_001"
     assert acc.balance is not None
-    assert acc.balance.current == 2543.21
+    assert acc.balance.current == Decimal("2543.21")
     assert acc.balance.currency == "NZD"
     assert acc.connection is not None
     assert acc.connection.id == "conn_anz"
