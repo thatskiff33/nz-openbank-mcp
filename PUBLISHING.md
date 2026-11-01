@@ -1,121 +1,126 @@
-# Publishing nz-openbank-mcp to PyPI
+# Publishing nz-openbank-mcp
 
-The GitHub Actions workflow at `.github/workflows/release.yml` builds, gates,
-and publishes to PyPI via **Trusted Publishing** (OIDC).
+Releases go to PyPI and GitHub Releases from `.github/workflows/release.yml`,
+authenticated with **Trusted Publishing** (OIDC). No API tokens are stored.
 
-## One-time PyPI setup
+The Claude Code plugin (`plugin/.mcp.json`) and the Desktop Extension
+(`mcpb/manifest.json`) launch `uvx --from nz-openbank-mcp==X.Y.Z nz-openbank-mcp`,
+pinned to the release version. `scripts/check_packaging.py` fails CI if a pin
+drifts from `pyproject.toml`.
 
-Required before the first release.
+## One-time setup
 
-The project is not yet published to PyPI. Until it is, the plugin and Desktop
-Extension launch the server straight from this GitHub repository.
+Already done for this repository; repeat only if it is moved or renamed.
 
-### 1. Register the project name on PyPI
+1. Trusted publishers, on https://pypi.org and https://test.pypi.org
+   (**Your account -> Publishing**; for an existing project, **Manage ->
+   Publishing**):
 
-Trusted Publishing requires the project to exist before configuring the
-publisher. Two ways to bootstrap:
+   | Field             | PyPI              | TestPyPI          |
+   | ----------------- | ----------------- | ----------------- |
+   | PyPI Project Name | `nz-openbank-mcp` | `nz-openbank-mcp` |
+   | Owner             | `thatskiff33`     | `thatskiff33`     |
+   | Repository name   | `nz-openbank-mcp` | `nz-openbank-mcp` |
+   | Workflow filename | `release.yml`     | `release.yml`     |
+   | Environment name  | `pypi`            | `testpypi`        |
 
-**Option A: pending publisher.** Sign in to https://pypi.org, go to
-**Your account -> Publishing -> Add a new pending publisher**, and fill in:
+   A pending publisher does not reserve the name; the first publish to each
+   index creates the project and binds the publisher.
 
-| Field              | Value                                  |
-| ------------------ | -------------------------------------- |
-| PyPI Project Name  | `nz-openbank-mcp`                         |
-| Owner              | `thatskiff33`                          |
-| Repository name    | `nz-openbank-mcp`                         |
-| Workflow filename  | `release.yml`                          |
-| Environment name   | `pypi`                                 |
+2. GitHub environments (**Settings -> Environments**):
+   - `pypi`: required reviewer (the maintainer); deployment tags `v*` only.
+   - `testpypi`: deployment tags `v*` only; no reviewer, so dry runs are not
+     blocked.
 
-The first publish creates the project and binds the trusted publisher to it
-permanently.
-
-**Option B: manual first upload.** Build locally, upload once with an API token,
-then convert to Trusted Publishing afterwards (see "Manual publish" below).
-
-### 2. Create the `pypi` GitHub environment
-
-In the GitHub repo: **Settings -> Environments -> New environment -> `pypi`**.
-
-Recommended environment protections:
-
-- **Required reviewers:** add yourself. Every publish waits for manual approval
-  in the GitHub Actions UI.
-- **Deployment branches:** restrict to `main`.
-
-The environment name must match the `environment.name` in the workflow and the
-environment name registered with PyPI's pending publisher.
-
-### 3. (Optional) Repeat for TestPyPI
-
-To dry-run releases against TestPyPI, register a parallel pending publisher on
-https://test.pypi.org and duplicate the publish job in the workflow with
-`repository-url: https://test.pypi.org/legacy/`.
+3. Tag rulesets (**Settings -> Rules -> Rulesets**), both targeting
+   `refs/tags/v*`:
+   - `release tags: immutable`: restrict updates and deletions, no bypass.
+   - `release tags: admins create`: restrict creations, repository admins
+     bypass.
 
 ## Cutting a release
 
-1. **Bump the version** in three files (must match):
+1. **Bump the version** in a PR. These must match, and CI enforces it:
+   - `pyproject.toml` `[project] version`
+   - `plugin/.claude-plugin/plugin.json` `version`
+   - `mcpb/manifest.json` `version`
+   - the `nz-openbank-mcp==X.Y.Z` pin in `plugin/.mcp.json` and in
+     `mcpb/manifest.json` `server.mcp_config.args`
 
-   - `pyproject.toml` `[project] version` - the workflow asserts this matches
-     the release tag (minus the leading `v`).
-   - `plugin/.claude-plugin/plugin.json` `version` - the Claude Code marketplace
-     plugin overlay served from this repo's `plugin/` subdir through the
-     marketplace in `.claude-plugin/marketplace.json`.
-   - `mcpb/manifest.json` `version` - the Claude Desktop Extension (`.mcpb`)
-     overlay packed by CI and attached to the GitHub Release. The `build-mcpb`
-     job asserts this matches the release tag.
+   Once merged, the plugin on `main` points at a version PyPI does not have
+   yet, so finish the release promptly.
 
-   All three must match; marketplace installers, PyPI installers, and
-   Desktop Extension installers should report the same number.
-
-2. **Commit, tag, and push:**
+2. **Tag the merge commit on `main`** and push the tag:
 
    ```bash
-   git commit -am "release: vX.Y.Z"
+   git switch main && git pull
    git tag vX.Y.Z
-   git push origin main vX.Y.Z
+   git push origin vX.Y.Z
    ```
 
-3. **Publish a GitHub Release** with that tag (Releases -> Draft a new release
-   -> select the tag -> Generate release notes -> Publish release).
+3. **Dry run on TestPyPI** from the tag:
 
-The Release event triggers the workflow:
+   ```bash
+   gh workflow run release.yml --ref vX.Y.Z
+   gh run watch "$(gh run list --workflow release.yml --event workflow_dispatch \
+     --branch vX.Y.Z --limit 1 --json databaseId -q '.[0].databaseId')"
+   ```
 
-- `ci-gate`: requires the tagged commit to be on `main` and to have a
-  successful `ci.yml` push run there (waits up to about 25 minutes if that run
-  is still in progress). Tag the head commit of a squash merge; a commit whose
-  push run was skipped cannot be released
-- `build`: `uv build` produces sdist + wheel; asserts pyproject version == tag
-- `build-mcpb`: `npx -y @anthropic-ai/mcpb@<pinned> pack mcpb` produces
-  `dist/nz-openbank-mcp-X.Y.Z.mcpb`; asserts manifest version == tag
-- `upload-mcpb`: attaches the bundle to the GitHub Release via
-  `gh release upload` (the only job with write access to the repository)
-- `publish`: pauses on the `pypi` environment for approval (if required
-  reviewers are configured), then OIDC-publishes to PyPI
+   Then check that the TestPyPI wheel installs and imports. Only the wheel
+   comes from TestPyPI; its dependencies resolve from PyPI:
 
-The package appears at https://pypi.org/project/nz-openbank-mcp/ within a minute,
-and `uvx nz-openbank-mcp` / `pip install nz-openbank-mcp` start resolving it. The
-`.mcpb` appears as a release asset at
-https://github.com/thatskiff33/nz-openbank-mcp/releases/tag/vX.Y.Z and is
-downloadable by Claude Desktop users.
+   ```bash
+   uvx pip download --no-deps --index-url https://test.pypi.org/simple/ \
+     -d /tmp/testpypi "nz-openbank-mcp==X.Y.Z"
+   uvx --from /tmp/testpypi/nz_openbank_mcp-X.Y.Z-py3-none-any.whl \
+     python -c "import nz_openbank_mcp; print(nz_openbank_mcp.__version__)"
+   ```
+
+   TestPyPI never accepts the same version twice; a failed dry run after a
+   successful upload needs a new patch version.
+
+4. **Publish the GitHub Release** for the tag:
+
+   ```bash
+   gh release create vX.Y.Z --verify-tag --generate-notes
+   ```
+
+5. **Approve the `pypi` deployment** in the Actions run when it pauses.
+
+Jobs:
+
+- `ci-gate` requires a `v*` tag whose commit is on `main` with a successful
+  `ci.yml` push run. It waits up to about 25 minutes if that run is still in
+  progress. Tag the merge commit itself; a commit whose push run was skipped
+  cannot be released.
+- `build` asserts the pyproject version matches the tag, runs
+  `scripts/check_packaging.py`, then `uv build`.
+- `publish-testpypi` (dispatch only) uploads to TestPyPI.
+- `build-mcpb` packs `nz-openbank-mcp-X.Y.Z.mcpb` with a pinned
+  `@anthropic-ai/mcpb`, asserts the manifest version matches the tag, and
+  checks the packed manifest matches `mcpb/manifest.json`.
+- `upload-assets` (release only, after `publish`) attaches the wheel, sdist and
+  `.mcpb` to the GitHub Release. It is the only job with repository write access.
+- `publish` (release only) waits for `pypi` environment approval, then
+  publishes to PyPI.
+
+After publishing, `uvx nz-openbank-mcp` and `pip install nz-openbank-mcp`
+resolve the new version. Plugin users pick up the new pin on their next
+marketplace update. Desktop users download the new `.mcpb` from
+https://github.com/thatskiff33/nz-openbank-mcp/releases.
 
 ## Manual publish (fallback)
 
+Use only if Trusted Publishing is unavailable:
+
 ```bash
-# 1. Clean build:
 rm -rf dist/
 uv build
-
-# 2. Publish via uv (uses ~/.pypirc or UV_PUBLISH_TOKEN env var):
-uv publish
-
-# or via twine:
-uvx twine upload dist/*
+uv publish  # reads UV_PUBLISH_TOKEN
 ```
 
-The manual path requires an API token: create one at
-https://pypi.org/manage/account/token/ scoped to this project, then put it in
-`~/.pypirc` or export `UV_PUBLISH_TOKEN=pypi-...`. After the first upload,
-configure the trusted publisher (above) and stop using the token.
+Create a project-scoped token at https://pypi.org/manage/account/token/, use it
+once, and delete it afterwards.
 
 ## Version policy
 
@@ -129,9 +134,10 @@ Document every breaking change in the GitHub release notes.
 
 ## Yanking a bad release
 
-```bash
-uvx twine yank nz-openbank-mcp --version X.Y.Z --reason "Broken refresh handling, use X.Y.(Z+1)"
-```
+On https://pypi.org/manage/project/nz-openbank-mcp/releases/, open the release's
+**Options -> Yank** and give a reason such as "Broken refresh handling, use
+X.Y.(Z+1)".
 
 Yanking hides the version from new installs but does not remove it; pinned
-installs still resolve. Follow up with a patched release.
+installs, including the plugin and Desktop Extension pins, still resolve.
+Follow up with a patched release and bump the pins.

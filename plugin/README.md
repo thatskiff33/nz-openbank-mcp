@@ -46,7 +46,7 @@ After install: `/mcp` should show `nz-openbank-mcp` connected. Ask Claude *"what
 /plugin marketplace update nz-openbank
 ```
 
-The plugin launches the server with `uvx` from this GitHub repository, so code updates on `main` flow in on next launch without a marketplace update. A marketplace update only ships changes to `plugin.json` / `.mcp.json` / this README.
+The plugin launches the PyPI release pinned in `.mcp.json` (`uvx --from nz-openbank-mcp==X.Y.Z`). Run the marketplace update above to move to a newer release.
 
 ## Uninstall
 

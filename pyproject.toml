@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "nz-openbank-mcp"
-version = "0.1.0"
+version = "0.1.1"
 description = "Unofficial MCP server for the Akahu open-finance API (New Zealand). Personal Apps, read-by-default, write-with-consent."
 readme = "README.md"
 license = { text = "Apache-2.0" }
@@ -70,6 +70,9 @@ Changelog = "https://github.com/thatskiff33/nz-openbank-mcp/releases"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/nz_openbank_mcp"]
+
+[tool.hatch.build.targets.sdist]
+include = ["/src", "/tests", "/README.md", "/SECURITY.md", "/LICENSE", "/pyproject.toml"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

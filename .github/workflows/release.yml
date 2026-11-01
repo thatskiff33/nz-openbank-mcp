@@ -1,24 +1,28 @@
-# Build, gate, and publish when a GitHub Release is published.
+# Build, gate, and publish a tagged release.
 #
 # Trust model:
-#   - Runs only on `release: published`. PR and main checks live in ci.yml.
-#   - The tagged commit must already have a successful `ci-ok` check from ci.yml.
-#   - PyPI authenticates via Trusted Publishing (OIDC); no API tokens are stored.
-#     See PUBLISHING.md for the one-time PyPI side setup.
-#   - The 'pypi' environment is the trust anchor on the PyPI side and the
-#     place for required-reviewer rules in GitHub.
+#   - `release: published` builds the wheel, sdist and .mcpb, attaches them to
+#     the GitHub Release, and publishes to PyPI.
+#   - `workflow_dispatch` run from a v* tag is the TestPyPI dry run: same gate
+#     and build, publishes to TestPyPI only.
+#   - The tagged commit must be on main with a successful ci.yml push run.
+#   - PyPI and TestPyPI authenticate via Trusted Publishing (OIDC); no API
+#     tokens are stored. See PUBLISHING.md for the one-time setup.
+#   - The 'pypi' and 'testpypi' environments accept only v* tags; 'pypi' also
+#     requires a reviewer.
 
 name: release
 
 on:
   release:
     types: [published]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.ref_name }}
+  group: release-${{ github.event_name }}-${{ github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -30,6 +34,16 @@ jobs:
       contents: read # compare the tagged commit with main
       actions: read # read ci.yml workflow runs
     steps:
+      - name: require a v* tag
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          if [ "$REF_TYPE" != "tag" ] || [[ "$REF_NAME" != v* ]]; then
+            echo "Release blocked: run from a v* tag, not $REF_TYPE $REF_NAME."
+            exit 1
+          fi
+
       - name: require the tagged commit to be on main
         env:
           GH_TOKEN: ${{ github.token }}
@@ -93,6 +107,9 @@ jobs:
           fi
           echo "Version $pyproject_version matches tag $GITHUB_REF_NAME"
 
+      - name: manifests, launch pins and version lockstep
+        run: uv run --no-project python scripts/check_packaging.py
+
       - name: build sdist + wheel
         run: uv build
 
@@ -134,6 +151,16 @@ jobs:
           version="${GITHUB_REF_NAME#v}"
           npx -y @anthropic-ai/mcpb@2.1.2 pack mcpb "dist/nz-openbank-mcp-${version}.mcpb"
 
+      - name: assert the packed manifest matches mcpb/manifest.json
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          unzip -p "dist/nz-openbank-mcp-${version}.mcpb" manifest.json | jq -S . > packed.json
+          jq -S . mcpb/manifest.json > source.json
+          if ! diff -u source.json packed.json; then
+            echo "Packed bundle manifest differs from mcpb/manifest.json"
+            exit 1
+          fi
+
       - name: upload bundle artefact
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -141,14 +168,21 @@ jobs:
           path: dist/*.mcpb
           if-no-files-found: error
 
-  upload-mcpb:
-    name: attach .mcpb to the GitHub Release
-    needs: build-mcpb
+  upload-assets:
+    name: attach wheel, sdist and .mcpb to the GitHub Release
+    needs: [build, build-mcpb, publish]
+    if: github.event_name == 'release'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
-      contents: write # gh release upload attaches the .mcpb to this Release
+      contents: write # gh release upload attaches assets to this Release
     steps:
+      - name: download package artefacts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: dist/
+
       - name: download bundle artefact
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -159,12 +193,36 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release upload "${GITHUB_REF_NAME}" dist/*.mcpb \
+          gh release upload "${GITHUB_REF_NAME}" dist/* \
             --repo "$GITHUB_REPOSITORY" --clobber
+
+  publish-testpypi:
+    name: publish to TestPyPI (dry run)
+    needs: build
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/nz-openbank-mcp
+    permissions:
+      id-token: write # OIDC token for TestPyPI Trusted Publishing
+    steps:
+      - name: download artefacts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: dist/
+
+      - name: publish to TestPyPI
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
+        with:
+          repository-url: https://test.pypi.org/legacy/
 
   publish:
     name: publish to PyPI
     needs: build
+    if: github.event_name == 'release'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment:
