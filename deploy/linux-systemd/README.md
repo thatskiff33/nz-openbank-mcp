@@ -129,7 +129,8 @@ Use `nz-openbank-http.service` only when Secure MCP Tunnel cannot be associated
 with the ChatGPT workspace. It requires:
 
 - `NZ_OPENBANK_MCP_AUTH_MODE=oauth` with the Google OAuth vars filled. Bearer
-  mode remains available only for approved clients that cannot use OAuth.
+  mode remains available only for approved clients that cannot use OAuth, and
+  needs a bearer token of at least 32 characters.
 - `NZ_OPENBANK_MCP_HTTP_HOST=127.0.0.1` when Caddy runs on the same host. If the
   reverse proxy is on a separate host, bind to a private interface and firewall
   the listener so only the reverse proxy can reach it.

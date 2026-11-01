@@ -192,10 +192,29 @@ nz-openbank-mcp
 uv run nz-openbank-mcp
 ```
 
+The server reads configuration from its process environment only. It never
+loads a `.env` file from the working directory. When started through the
+`nz-openbank-mcp` console scripts this also covers FastMCP's own `FASTMCP_*`
+settings; the `fastmcp` CLI loads them before the package, so prefix it with
+`FASTMCP_ENV_FILE=/dev/null` as shown below. To use an env file (see
+`.env.example`), pass its absolute path; on Linux and macOS the file must not be
+writable by group or others and must be owned by you or root:
+
+```bash
+AKAHU_ENV_FILE=/abs/path/to/nz-openbank.env uv run nz-openbank-mcp
+```
+
+`AKAHU_BASE_URL` must point at `https://api.akahu.io` unless
+`AKAHU_ALLOW_CUSTOM_BASE_URL=true` is set in the process environment; that flag
+is ignored inside an env file, and the server logs a warning at startup when a
+custom host is in use. Set `AKAHU_ENV_FILE` and `AKAHU_ALLOW_CUSTOM_BASE_URL`
+only in your own shell or host config, never in project files checked into a
+repository you cloned.
+
 The server speaks MCP over stdio. Inspect tool calls with:
 
 ```bash
-uv run fastmcp dev src/nz_openbank_mcp/server.py
+FASTMCP_ENV_FILE=/dev/null uv run fastmcp dev src/nz_openbank_mcp/server.py
 ```
 
 An authenticated Streamable HTTP entrypoint exists for explicitly secured
@@ -204,7 +223,7 @@ Claude Desktop, and Claude API HTTP clients working:
 
 ```bash
 export NZ_OPENBANK_MCP_AUTH_MODE=bearer
-export NZ_OPENBANK_MCP_BEARER_TOKEN="long_random_token"
+export NZ_OPENBANK_MCP_BEARER_TOKEN="$(openssl rand -base64 48)"  # 32+ characters
 export NZ_OPENBANK_MCP_HTTP_HOST=127.0.0.1
 export NZ_OPENBANK_MCP_HTTP_PORT=8091
 export NZ_OPENBANK_MCP_HTTP_PATH=/mcp
@@ -303,8 +322,8 @@ enumerates the bypass-eligible subset.
 The server starts with `AKAHU_READ_ONLY=true`. Every write tool refuses with
 this message:
 
-> Write operations are disabled. To enable: set `AKAHU_READ_ONLY=false` in your
-> `.env` and restart the MCP server. Each write will require your explicit
+> Write operations are disabled. To enable: set `AKAHU_READ_ONLY=false` in the
+> server's environment and restart the MCP server. Each write will require your explicit
 > confirmation through Claude (or set `AKAHU_AUTOMATION_BYPASS=true` for the
 > automatable subset only).
 

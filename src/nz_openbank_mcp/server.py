@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import logging
 from typing import Any
+from urllib.parse import urlsplit
 
 from fastmcp import FastMCP
 from fastmcp.server.auth import AuthProvider
 from key_value.aio.protocols import AsyncKeyValue
 
-from nz_openbank_mcp.config import AkahuConfig, McpHttpConfig, McpOAuthConfig
+from nz_openbank_mcp.config import AKAHU_API_HOST, AkahuConfig, McpHttpConfig, McpOAuthConfig
 from nz_openbank_mcp.http_auth import (
     AllowlistedGoogleOAuthProvider,
     StaticBearerAuthProvider,
@@ -67,6 +68,13 @@ def build_http_server(
 def log_startup_banner() -> None:
     """Emit a banner describing the current safety posture."""
     cfg = AkahuConfig()
+    host = urlsplit(cfg.base_url).hostname
+    if host != AKAHU_API_HOST:
+        logger.warning(
+            "AKAHU_BASE_URL points at %s, not %s. Akahu tokens are sent to that host.",
+            host,
+            AKAHU_API_HOST,
+        )
     if cfg.read_only:
         logger.info(
             "nz-openbank-mcp starting in READ-ONLY mode. All write tools will refuse "
@@ -78,7 +86,7 @@ def log_startup_banner() -> None:
         logger.warning(
             "Automation bypass ENABLED. The following tools will skip the "
             "confirmation prompt: %s. All other writes still require "
-            "confirmation. Disable by removing AKAHU_AUTOMATION_BYPASS from .env.",
+            "confirmation. Disable by setting AKAHU_AUTOMATION_BYPASS=false.",
             ", ".join(eligible),
         )
         return

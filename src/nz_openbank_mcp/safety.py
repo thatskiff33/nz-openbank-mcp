@@ -225,8 +225,8 @@ def require_write_consent(
             if cfg.read_only:
                 raise ReadOnlyError(
                     "Write operations are disabled. To enable: set "
-                    "AKAHU_READ_ONLY=false in your .env and restart the MCP "
-                    "server. Each write will require your explicit confirmation "
+                    "AKAHU_READ_ONLY=false in the server's environment and restart "
+                    "the MCP server. Each write will require your explicit confirmation "
                     "through Claude (or set AKAHU_AUTOMATION_BYPASS=true for "
                     "the automatable subset only)."
                 )
