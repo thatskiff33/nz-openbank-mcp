@@ -188,9 +188,8 @@ read-only refusal.
 
 Three channels, same code:
 
-1. **Python package** (`uvx --from git+https://github.com/thatskiff33/nz-openbank-mcp nz-openbank-mcp`
-   until a PyPI release exists) - works in any MCP host. The package source
-   is `src/nz_openbank_mcp/`.
+1. **Python package** on PyPI (`uvx nz-openbank-mcp`) - works in any MCP
+   host. The package source is `src/nz_openbank_mcp/`.
 2. **Claude Code marketplace plugin** (`/plugin marketplace add thatskiff33/nz-openbank-mcp`) -
    this repo is its own marketplace via `.claude-plugin/marketplace.json`,
    which points at the plugin files in `plugin/`. **Claude Code only** -
@@ -241,16 +240,15 @@ project-scope auto-detection when developing locally). The `.gitignore`
 rule `/.mcp.json` is anchored to root so the plugin's file at
 `plugin/.mcp.json` stays tracked.
 
-Release flow is documented in `PUBLISHING.md`. Summary: bump three files
-in lockstep (`pyproject.toml`, `plugin/.claude-plugin/plugin.json`,
-`mcpb/manifest.json`), tag `vX.Y.Z`, push, publish GitHub Release. The
-workflow's `ci-gate` job requires a green `ci.yml` run on `main` for the
-tagged commit; `build` (PyPI) and `build-mcpb` gate on a version-matches-tag
-assertion. Trusted Publishing (OIDC) handles PyPI auth;
-`GITHUB_TOKEN` handles `gh release upload` for the `.mcpb`. Marketplace
-clients re-pull the plugin from the tagged commit; no separate marketplace
-release is required. Desktop users redownload the `.mcpb` from the Releases
-page.
+Release flow is documented in `PUBLISHING.md`. Summary: bump the version in
+`pyproject.toml`, `plugin/.claude-plugin/plugin.json` and `mcpb/manifest.json`
+plus the `nz-openbank-mcp==X.Y.Z` launch pins in `plugin/.mcp.json` and
+`mcpb/manifest.json` (`scripts/check_packaging.py` enforces all five). Merge,
+tag the merge commit `vX.Y.Z`, run `gh workflow run release.yml --ref vX.Y.Z`
+for the TestPyPI dry run, then publish the GitHub Release and approve the
+`pypi` environment. `ci-gate` requires a green `ci.yml` push run on `main`
+for the tagged commit. Trusted Publishing (OIDC) handles PyPI and TestPyPI;
+`GITHUB_TOKEN` attaches the wheel, sdist and `.mcpb` to the Release.
 
 ## Style conventions (from user's global instructions)
 

@@ -74,8 +74,6 @@ After install, `/mcp` should show `nz-openbank-mcp` connected. See [`plugin/READ
 
 #### Option A: remote install via `claude mcp add`
 
-Once published to PyPI:
-
 ```bash
 claude mcp add nz-openbank \
   --scope user \
@@ -85,15 +83,8 @@ claude mcp add nz-openbank \
   -- uvx nz-openbank-mcp
 ```
 
-Before a PyPI release, install straight from GitHub:
-
-```bash
-claude mcp add nz-openbank \
-  --scope user \
-  --env AKAHU_APP_TOKEN=app_token_... \
-  --env AKAHU_USER_TOKEN=user_token_... \
-  -- uvx --from git+https://github.com/thatskiff33/nz-openbank-mcp nz-openbank-mcp
-```
+To run unreleased code from `main` instead, replace the last line with
+`-- uvx --from git+https://github.com/thatskiff33/nz-openbank-mcp nz-openbank-mcp`.
 
 Scope options:
 - `--scope user` - available in every Claude Code project for your user (recommended for personal banking data)
@@ -165,7 +156,7 @@ A `.mcpb` Desktop Extension is attached to every GitHub Release. Claude Desktop 
    - **Automation bypass** (default `false` - leave unless you want to skip consent prompts for account refresh)
 4. Enable the extension. Claude Desktop's MCP indicator should list `nz-openbank-mcp` as connected.
 
-Updates: download the newer `.mcpb` from the Releases page and reinstall. The bundle launches the server with `uvx` from this GitHub repository, so code updates flow in on next launch regardless.
+Updates: download the newer `.mcpb` from the Releases page and reinstall. Each bundle launches the PyPI release it was built for (`uvx --from nz-openbank-mcp==X.Y.Z`).
 
 ### Manual: `claude_desktop_config.json`
 
@@ -417,13 +408,12 @@ https://my.akahu.nz/developers; without the grant they return 403:
 
 ## Releasing
 
-To cut a release: bump `version` in `pyproject.toml`, push a `vX.Y.Z` tag, then
-publish a GitHub Release with that tag. The workflow runs the test+ruff+mypy
-gate, asserts the pyproject version matches the tag, and publishes to PyPI via
-Trusted Publishing (OIDC).
+Releases are published to [PyPI](https://pypi.org/project/nz-openbank-mcp/) and
+[GitHub Releases](https://github.com/thatskiff33/nz-openbank-mcp/releases) (wheel,
+sdist and `.mcpb`) via Trusted Publishing, after a TestPyPI dry run from the
+tag. See [`PUBLISHING.md`](PUBLISHING.md) for the steps.
 
-See [`PUBLISHING.md`](PUBLISHING.md) for the one-time PyPI setup and the
-manual-publish fallback.
+Report vulnerabilities privately; see [`SECURITY.md`](SECURITY.md).
 
 ## Disclaimer
 

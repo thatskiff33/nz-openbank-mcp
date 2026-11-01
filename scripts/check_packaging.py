@@ -1,7 +1,8 @@
 """Validate plugin, marketplace and Desktop Extension manifests.
 
 Checks: every manifest parses as JSON with its required keys, versions match
-pyproject.toml, each launch-spec env var is injected from the user config key
+pyproject.toml, each launch spec runs the PyPI release pinned to that version,
+each launch-spec env var is injected from the user config key
 of the same name (AKAHU_READ_ONLY <- akahu_read_only) and every declared key is
 injected, the plugin and Desktop Extension declare the same keys, tokens are
 marked sensitive, safety defaults stay read-only, and no root .mcp.json exists.
@@ -68,6 +69,15 @@ def check_env(rel: str, env: dict[str, Any], declared: dict[str, Any]) -> None:
         fail(f"{rel}: user config {key!r} is declared but never injected into env")
 
 
+def check_launch(rel: str, server: dict[str, Any], version: str) -> None:
+    expected = ["--from", f"nz-openbank-mcp=={version}", "nz-openbank-mcp"]
+    if server.get("command") != "uvx" or server.get("args") != expected:
+        fail(
+            f"{rel}: launch must be uvx {' '.join(expected)}, got "
+            f"{server.get('command')!r} {server.get('args')!r}"
+        )
+
+
 def check_user_config(rel: str, config: dict[str, Any]) -> None:
     for key in sorted(SENSITIVE_KEYS):
         if not obj(config.get(key, {}), f"{rel}: {key}").get("sensitive"):
@@ -103,6 +113,7 @@ def main() -> int:
     require(mcp_rel, mcp, "mcpServers")
     for name, server in obj(mcp.get("mcpServers", {}), f"{mcp_rel}: mcpServers").items():
         server_obj = obj(server, f"{mcp_rel}: {name}")
+        check_launch(f"{mcp_rel}: {name}", server_obj, version)
         check_env(mcp_rel, obj(server_obj.get("env", {}), f"{mcp_rel}: {name}.env"), user_config)
 
     mcpb_rel = "mcpb/manifest.json"
@@ -111,6 +122,7 @@ def main() -> int:
     mcpb_config = obj(mcpb.get("user_config", {}), f"{mcpb_rel}: user_config")
     check_user_config(mcpb_rel, mcpb_config)
     mcp_config = obj(obj(mcpb.get("server", {}), mcpb_rel).get("mcp_config", {}), mcpb_rel)
+    check_launch(mcpb_rel, mcp_config, version)
     check_env(mcpb_rel, obj(mcp_config.get("env", {}), f"{mcpb_rel}: env"), mcpb_config)
 
     if set(user_config) != set(mcpb_config):

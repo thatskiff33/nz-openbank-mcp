@@ -1,0 +1,27 @@
+name: Feature request
+description: Propose a new tool or behaviour.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Tools are thin wrappers over Akahu Personal App endpoints. Analytical
+        questions (spending summaries, subscriptions, forecasts) are left to the
+        model over raw transaction data, so analytical tools are out of scope.
+        App-scoped Akahu endpoints are not available to Personal Apps.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+    validations:
+      required: true
+  - type: textarea
+    id: endpoint
+    attributes:
+      label: Akahu endpoint
+      description: The Akahu API endpoint this would call, with a link to its documentation.
+  - type: textarea
+    id: safety
+    attributes:
+      label: Writes and safety
+      description: Does this change anything at Akahu or a bank? If so, how should consent work?

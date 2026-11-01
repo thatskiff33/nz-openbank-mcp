@@ -1,0 +1,66 @@
+name: Bug report
+description: Something does not work as documented.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Do not paste secrets or financial data.** Remove Akahu tokens, bearer
+        tokens, OAuth secrets, account numbers, balances, transaction details,
+        names and email addresses from everything below. Replace them with
+        placeholders such as `acc_xxx` or `$1,234.56`.
+
+        Security problems go to
+        [private vulnerability reporting](https://github.com/thatskiff33/nz-openbank-mcp/security/advisories/new),
+        not here.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Release version (for example 0.1.0) or the commit SHA you run.
+    validations:
+      required: true
+  - type: dropdown
+    id: launch
+    attributes:
+      label: How is the server launched?
+      options:
+        - Claude Code plugin
+        - Claude Desktop Extension (.mcpb)
+        - Manual MCP host config (uvx or pip)
+        - HTTP mode (bearer)
+        - HTTP mode (oauth)
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: host
+    attributes:
+      label: MCP host and OS
+      placeholder: Claude Desktop 1.x on macOS 16
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: Include the tool name and arguments with any real values replaced.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Redacted log lines only. Check them for tokens and account data before posting.
+      render: text
+  - type: checkboxes
+    id: redaction
+    attributes:
+      label: Redaction
+      options:
+        - label: I removed tokens, secrets, account numbers and transaction data from this report.
+          required: true
