@@ -38,10 +38,13 @@ Upgrade before reporting if you are on an older version.
   - `oauth`: the server is the OAuth authorization server with Google as the
     identity provider. Access is limited to allowlisted verified emails or
     Google Workspace domains (hosted-domain claim); client redirect URIs are
-    limited to known connector callbacks; tokens are signed with an explicit
-    key and OAuth state is stored encrypted.
+    limited to an allowlist (the Claude and ChatGPT connector callbacks and
+    loopback by default); tokens are signed with an explicit key and OAuth
+    state is stored encrypted.
 - **No logging of secrets or financial data.** Tokens are held as secret types,
-  hidden from reprs and validation errors, and HTTP client loggers are capped.
+  hidden from reprs and validation errors. Balances and transaction contents
+  are not logged; request paths, which can include Akahu account and
+  transaction IDs, are.
 
 ## Out of scope
 

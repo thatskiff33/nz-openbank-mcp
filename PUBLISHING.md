@@ -12,8 +12,9 @@ drifts from `pyproject.toml`.
 
 Already done for this repository; repeat only if it is moved or renamed.
 
-1. Pending publishers, on https://pypi.org and https://test.pypi.org
-   (**Your account -> Publishing -> Add a new pending publisher**):
+1. Trusted publishers, on https://pypi.org and https://test.pypi.org
+   (**Your account -> Publishing**; for an existing project, **Manage ->
+   Publishing**):
 
    | Field             | PyPI              | TestPyPI          |
    | ----------------- | ----------------- | ----------------- |
@@ -23,12 +24,19 @@ Already done for this repository; repeat only if it is moved or renamed.
    | Workflow filename | `release.yml`     | `release.yml`     |
    | Environment name  | `pypi`            | `testpypi`        |
 
-   The first publish to each index creates the project and binds the publisher.
+   A pending publisher does not reserve the name; the first publish to each
+   index creates the project and binds the publisher.
 
 2. GitHub environments (**Settings -> Environments**):
    - `pypi`: required reviewer (the maintainer); deployment tags `v*` only.
    - `testpypi`: deployment tags `v*` only; no reviewer, so dry runs are not
      blocked.
+
+3. Tag rulesets (**Settings -> Rules -> Rulesets**), both targeting
+   `refs/tags/v*`:
+   - `release tags: immutable`: restrict updates and deletions, no bypass.
+   - `release tags: admins create`: restrict creations, repository admins
+     bypass.
 
 ## Cutting a release
 
@@ -54,14 +62,18 @@ Already done for this repository; repeat only if it is moved or renamed.
 
    ```bash
    gh workflow run release.yml --ref vX.Y.Z
-   gh run watch "$(gh run list --workflow release.yml --limit 1 --json databaseId -q '.[0].databaseId')"
+   gh run watch "$(gh run list --workflow release.yml --event workflow_dispatch \
+     --branch vX.Y.Z --limit 1 --json databaseId -q '.[0].databaseId')"
    ```
 
-   Then check that the TestPyPI build installs and imports:
+   Then check that the TestPyPI wheel installs and imports. Only the wheel
+   comes from TestPyPI; its dependencies resolve from PyPI:
 
    ```bash
-   uvx --index https://test.pypi.org/simple/ --index-strategy unsafe-best-match \
-     --from "nz-openbank-mcp==X.Y.Z" python -c "import nz_openbank_mcp; print(nz_openbank_mcp.__version__)"
+   uvx pip download --no-deps --index-url https://test.pypi.org/simple/ \
+     -d /tmp/testpypi "nz-openbank-mcp==X.Y.Z"
+   uvx --from /tmp/testpypi/nz_openbank_mcp-X.Y.Z-py3-none-any.whl \
+     python -c "import nz_openbank_mcp; print(nz_openbank_mcp.__version__)"
    ```
 
    TestPyPI never accepts the same version twice; a failed dry run after a
@@ -83,10 +95,11 @@ Jobs:
   cannot be released.
 - `build` runs `uv build` and asserts the pyproject version matches the tag.
 - `publish-testpypi` (dispatch only) uploads to TestPyPI.
-- `build-mcpb` (release only) packs `nz-openbank-mcp-X.Y.Z.mcpb` with a pinned
-  `@anthropic-ai/mcpb` and asserts the manifest version matches the tag.
-- `upload-assets` (release only) attaches the wheel, sdist and `.mcpb` to the
-  GitHub Release. It is the only job with repository write access.
+- `build-mcpb` packs `nz-openbank-mcp-X.Y.Z.mcpb` with a pinned
+  `@anthropic-ai/mcpb`, asserts the manifest version matches the tag, and
+  checks the packed manifest matches `mcpb/manifest.json`.
+- `upload-assets` (release only, after `publish`) attaches the wheel, sdist and
+  `.mcpb` to the GitHub Release. It is the only job with repository write access.
 - `publish` (release only) waits for `pypi` environment approval, then
   publishes to PyPI.
 
