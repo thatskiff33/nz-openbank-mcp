@@ -51,9 +51,7 @@ class AllowlistedGoogleOAuthProvider(GoogleProvider):
         client_storage: AsyncKeyValue | None = None,
     ) -> None:
         self._allowed_users = frozenset(_normalise_email(value) for value in allowed_users)
-        self._allowed_domains = frozenset(
-            _normalise_domain(value) for value in allowed_domains
-        )
+        self._allowed_domains = frozenset(_normalise_domain(value) for value in allowed_domains)
         super().__init__(
             client_id=client_id,
             client_secret=client_secret,

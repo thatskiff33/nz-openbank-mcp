@@ -80,11 +80,15 @@ https://test.pypi.org and duplicate the publish job in the workflow with
 
 The Release event triggers the workflow:
 
-- `test`: ruff + mypy + pytest (100% coverage gate)
+- `ci-gate`: requires the tagged commit to be on `main` and to have a
+  successful `ci.yml` push run there (waits up to about 25 minutes if that run
+  is still in progress). Tag the head commit of a squash merge; a commit whose
+  push run was skipped cannot be released
 - `build`: `uv build` produces sdist + wheel; asserts pyproject version == tag
-- `build-mcpb`: `npx -y @anthropic-ai/mcpb pack mcpb` produces
-  `dist/nz-openbank-mcp-X.Y.Z.mcpb`; asserts manifest version == tag; uploads
-  the bundle to the GitHub Release via `gh release upload`
+- `build-mcpb`: `npx -y @anthropic-ai/mcpb@<pinned> pack mcpb` produces
+  `dist/nz-openbank-mcp-X.Y.Z.mcpb`; asserts manifest version == tag
+- `upload-mcpb`: attaches the bundle to the GitHub Release via
+  `gh release upload` (the only job with write access to the repository)
 - `publish`: pauses on the `pypi` environment for approval (if required
   reviewers are configured), then OIDC-publishes to PyPI
 

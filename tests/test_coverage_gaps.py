@@ -11,9 +11,7 @@ from tests.conftest import load_fixture
 # ---------- client: __aenter__ / __aexit__ ----------
 
 
-async def test_client_async_context_manager(
-    fake_env: None, respx_mock: respx.MockRouter
-) -> None:
+async def test_client_async_context_manager(fake_env: None, respx_mock: respx.MockRouter) -> None:
     """The client should be usable as `async with AkahuClient() as c:`."""
     from nz_openbank_mcp.client import AkahuClient
     from nz_openbank_mcp.config import AkahuConfig
@@ -100,9 +98,7 @@ async def test_iter_transactions_passes_start_end(
 # ---------- client: report_transaction_issue with only the minimum body ----------
 
 
-async def test_report_issue_minimal_body(
-    fake_env: None, respx_mock: respx.MockRouter
-) -> None:
+async def test_report_issue_minimal_body(fake_env: None, respx_mock: respx.MockRouter) -> None:
     """If fields/comment/other are all absent, the body must only have type."""
     from nz_openbank_mcp.client import AkahuClient
     from nz_openbank_mcp.config import AkahuConfig
@@ -122,9 +118,7 @@ async def test_report_issue_minimal_body(
     assert b"other_id" not in body
 
 
-async def test_report_issue_with_other_id(
-    fake_env: None, respx_mock: respx.MockRouter
-) -> None:
+async def test_report_issue_with_other_id(fake_env: None, respx_mock: respx.MockRouter) -> None:
     """The other_id field (not other_transaction_id) must land in the request body."""
     from nz_openbank_mcp.client import AkahuClient
     from nz_openbank_mcp.config import AkahuConfig

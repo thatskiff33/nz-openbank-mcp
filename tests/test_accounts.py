@@ -47,9 +47,7 @@ async def test_list_accounts_returns_masked(fake_env: None, patched_client: Magi
     assert a0["currency"] == "NZD"
 
 
-async def test_list_accounts_empty(
-    fake_env: None, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_list_accounts_empty(fake_env: None, monkeypatch: pytest.MonkeyPatch) -> None:
     from nz_openbank_mcp import deps
     from nz_openbank_mcp.tools.accounts import list_accounts
 
@@ -304,13 +302,16 @@ async def test_account_pending_transactions_uses_account_currency(
             "type": "PAYMENT",
         }
     )
-    item = {**load_fixture("accounts")["items"][0], "balance": {
-        "currency": "USD",
-        "current": 100.00,
-        "available": 100.00,
-        "limit": 0,
-        "overdrawn": False,
-    }}
+    item = {
+        **load_fixture("accounts")["items"][0],
+        "balance": {
+            "currency": "USD",
+            "current": 100.00,
+            "available": 100.00,
+            "limit": 0,
+            "overdrawn": False,
+        },
+    }
     client = MagicMock()
     client.get_account = AsyncMock(return_value=Account.model_validate(item))
     client.get_account_pending_transactions = AsyncMock(return_value=[txn])

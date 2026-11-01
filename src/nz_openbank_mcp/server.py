@@ -83,8 +83,7 @@ def log_startup_banner() -> None:
         )
         return
     logger.info(
-        "nz-openbank-mcp starting in WRITE mode. All writes require confirmation "
-        "through Claude."
+        "nz-openbank-mcp starting in WRITE mode. All writes require confirmation through Claude."
     )
 
 

@@ -96,7 +96,11 @@ class AkahuClient:
                 last_exc = exc
                 logger.warning(
                     "%s %s transport error (%s); attempt %d/%d",
-                    method, path, type(exc).__name__, attempt + 1, _MAX_ATTEMPTS,
+                    method,
+                    path,
+                    type(exc).__name__,
+                    attempt + 1,
+                    _MAX_ATTEMPTS,
                 )
                 await asyncio.sleep(_BASE_BACKOFF * (2**attempt))
                 continue
@@ -115,7 +119,11 @@ class AkahuClient:
             if 500 <= response.status_code < 600 and attempt < _MAX_ATTEMPTS - 1:
                 logger.warning(
                     "%s %s server error %d; attempt %d/%d",
-                    method, path, response.status_code, attempt + 1, _MAX_ATTEMPTS,
+                    method,
+                    path,
+                    response.status_code,
+                    attempt + 1,
+                    _MAX_ATTEMPTS,
                 )
                 await asyncio.sleep(_BASE_BACKOFF * (2**attempt))
                 continue

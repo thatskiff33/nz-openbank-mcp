@@ -70,9 +70,7 @@ async def test_verify_name_global_accept(
     from nz_openbank_mcp.tools.identity import verify_name
 
     ctx = ctx_factory(elicit_action="accept")
-    result = await verify_name(
-        ctx=ctx, family_name="Person", given_name="Fixture"
-    )
+    result = await verify_name(ctx=ctx, family_name="Person", given_name="Fixture")
     assert result["success"] is True
     patched_client.verify_name.assert_awaited_once_with(
         family_name="Person",

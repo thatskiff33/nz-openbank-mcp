@@ -130,9 +130,7 @@ def test_bypass_env_loads(bypass_env: None) -> None:
     assert cfg.automation_bypass is True
 
 
-def test_http_config_loads_nz_prefixed_env(
-    monkeypatch: pytest.MonkeyPatch, fake_env: None
-) -> None:
+def test_http_config_loads_nz_prefixed_env(monkeypatch: pytest.MonkeyPatch, fake_env: None) -> None:
     from nz_openbank_mcp.config import McpHttpConfig
 
     monkeypatch.setenv("NZ_OPENBANK_MCP_BEARER_TOKEN", "http_token_test")
@@ -191,9 +189,7 @@ def test_http_config_rejects_non_string_auth_mode(fake_env: None) -> None:
         McpHttpConfig(auth_mode=b"oauth")
 
 
-def test_http_config_requires_bearer_token(
-    monkeypatch: pytest.MonkeyPatch, fake_env: None
-) -> None:
+def test_http_config_requires_bearer_token(monkeypatch: pytest.MonkeyPatch, fake_env: None) -> None:
     from nz_openbank_mcp.config import McpHttpConfig
 
     monkeypatch.delenv("NZ_OPENBANK_MCP_BEARER_TOKEN", raising=False)
@@ -203,9 +199,7 @@ def test_http_config_requires_bearer_token(
         McpHttpConfig()
 
 
-def test_http_config_rejects_relative_path(
-    monkeypatch: pytest.MonkeyPatch, fake_env: None
-) -> None:
+def test_http_config_rejects_relative_path(monkeypatch: pytest.MonkeyPatch, fake_env: None) -> None:
     from nz_openbank_mcp.config import McpHttpConfig
 
     monkeypatch.setenv("NZ_OPENBANK_MCP_BEARER_TOKEN", "http_token_test")

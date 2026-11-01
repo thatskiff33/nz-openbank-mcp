@@ -45,9 +45,7 @@ def patched_client(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
 # ---------- get_transactions ----------
 
 
-async def test_get_transactions_returns_all(
-    fake_env: None, patched_client: MagicMock
-) -> None:
+async def test_get_transactions_returns_all(fake_env: None, patched_client: MagicMock) -> None:
     from nz_openbank_mcp.tools.transactions import get_transactions
 
     result = await get_transactions()
@@ -118,15 +116,11 @@ async def test_get_transactions_without_account_id_uses_all_txn_endpoint(
     from nz_openbank_mcp.tools.transactions import get_transactions
 
     await get_transactions(start_date="2026-05-01T00:00:00Z")
-    patched_client.iter_transactions.assert_called_once_with(
-        start="2026-05-01T00:00:00Z", end=None
-    )
+    patched_client.iter_transactions.assert_called_once_with(start="2026-05-01T00:00:00Z", end=None)
     patched_client.iter_account_transactions.assert_not_called()
 
 
-async def test_get_transactions_respects_limit(
-    fake_env: None, patched_client: MagicMock
-) -> None:
+async def test_get_transactions_respects_limit(fake_env: None, patched_client: MagicMock) -> None:
     from nz_openbank_mcp.tools.transactions import get_transactions
 
     result = await get_transactions(limit=2)
@@ -181,9 +175,7 @@ async def test_search_transactions_by_description(
     assert result["transactions"][0]["id"] == "txn_002"
 
 
-async def test_search_transactions_by_merchant(
-    fake_env: None, patched_client: MagicMock
-) -> None:
+async def test_search_transactions_by_merchant(fake_env: None, patched_client: MagicMock) -> None:
     from nz_openbank_mcp.tools.transactions import search_transactions
 
     result = await search_transactions(query="grocer")
@@ -191,9 +183,7 @@ async def test_search_transactions_by_merchant(
     assert result["transactions"][0]["merchant"] == "Demo Grocer"
 
 
-async def test_search_transactions_no_match(
-    fake_env: None, patched_client: MagicMock
-) -> None:
+async def test_search_transactions_no_match(fake_env: None, patched_client: MagicMock) -> None:
     from nz_openbank_mcp.tools.transactions import search_transactions
 
     result = await search_transactions(query="zzznever")
@@ -220,9 +210,7 @@ async def test_report_transaction_issue_blocks_in_readonly(
 
     ctx = ctx_factory()
     with pytest.raises(ReadOnlyError):
-        await report_transaction_issue(
-            ctx=ctx, transaction_id="txn_001", issue_type="DUPLICATE"
-        )
+        await report_transaction_issue(ctx=ctx, transaction_id="txn_001", issue_type="DUPLICATE")
 
 
 async def test_report_transaction_issue_accept(
@@ -249,9 +237,7 @@ async def test_report_transaction_issue_decline(
 
     ctx = ctx_factory(elicit_action="decline")
     with pytest.raises(ElicitationDeclinedError):
-        await report_transaction_issue(
-            ctx=ctx, transaction_id="txn_001", issue_type="DUPLICATE"
-        )
+        await report_transaction_issue(ctx=ctx, transaction_id="txn_001", issue_type="DUPLICATE")
 
 
 async def test_report_transaction_issue_cancel(
@@ -262,9 +248,7 @@ async def test_report_transaction_issue_cancel(
 
     ctx = ctx_factory(elicit_action="cancel")
     with pytest.raises(ElicitationCancelledError):
-        await report_transaction_issue(
-            ctx=ctx, transaction_id="txn_001", issue_type="DUPLICATE"
-        )
+        await report_transaction_issue(ctx=ctx, transaction_id="txn_001", issue_type="DUPLICATE")
 
 
 async def test_report_transaction_issue_still_elicits_under_bypass(
@@ -357,9 +341,7 @@ async def test_report_transaction_issue_field_fill_decline(
         DeclinedElicitation(),
     ]
     with pytest.raises(ElicitationDeclinedError):
-        await report_transaction_issue(
-            ctx=ctx, transaction_id="txn_001", issue_type="DUPLICATE"
-        )
+        await report_transaction_issue(ctx=ctx, transaction_id="txn_001", issue_type="DUPLICATE")
     patched_client.report_transaction_issue.assert_not_awaited()
 
 
@@ -377,9 +359,7 @@ async def test_report_transaction_issue_field_fill_cancel(
         CancelledElicitation(),
     ]
     with pytest.raises(ElicitationCancelledError):
-        await report_transaction_issue(
-            ctx=ctx, transaction_id="txn_001", issue_type="DUPLICATE"
-        )
+        await report_transaction_issue(ctx=ctx, transaction_id="txn_001", issue_type="DUPLICATE")
     patched_client.report_transaction_issue.assert_not_awaited()
 
 
@@ -424,9 +404,7 @@ async def test_report_transaction_issue_enrichment_suggestion_ok(
 # ---------- get_transactions_by_ids ----------
 
 
-async def test_get_transactions_by_ids(
-    fake_env: None, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_get_transactions_by_ids(fake_env: None, monkeypatch: pytest.MonkeyPatch) -> None:
     from nz_openbank_mcp import deps
     from nz_openbank_mcp.tools.transactions import get_transactions_by_ids
 
@@ -441,9 +419,7 @@ async def test_get_transactions_by_ids(
 # ---------- get_pending_transactions ----------
 
 
-async def test_get_pending_transactions(
-    fake_env: None, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_get_pending_transactions(fake_env: None, monkeypatch: pytest.MonkeyPatch) -> None:
     from nz_openbank_mcp import deps
     from nz_openbank_mcp.tools.transactions import get_pending_transactions
 

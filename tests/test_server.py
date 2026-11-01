@@ -363,12 +363,8 @@ def test_oauth_http_app_exposes_metadata_and_rejects_missing_token(fake_env: Non
     )
 
     with TestClient(app) as client:
-        protected = client.get(
-            "/.well-known/oauth-protected-resource/openbank-mcp/mcp"
-        )
-        authorization = client.get(
-            "/.well-known/oauth-authorization-server/openbank-mcp"
-        )
+        protected = client.get("/.well-known/oauth-protected-resource/openbank-mcp/mcp")
+        authorization = client.get("/.well-known/oauth-authorization-server/openbank-mcp")
         unauthenticated = client.post(cfg.path, json={})
 
     protected_metadata = protected.json()
@@ -376,9 +372,7 @@ def test_oauth_http_app_exposes_metadata_and_rejects_missing_token(fake_env: Non
 
     assert protected.status_code == 200
     assert protected_metadata["resource"] == "https://mcp.example.com/openbank-mcp/mcp"
-    assert protected_metadata["authorization_servers"] == [
-        "https://mcp.example.com/openbank-mcp"
-    ]
+    assert protected_metadata["authorization_servers"] == ["https://mcp.example.com/openbank-mcp"]
     assert authorization.status_code == 200
     assert authorization_metadata["issuer"] == "https://mcp.example.com/openbank-mcp"
     assert authorization_metadata["authorization_endpoint"] == (
@@ -470,9 +464,7 @@ def test_startup_banner_when_bypass_off(
     assert "all writes require confirmation" in blob.lower()
 
 
-def test_startup_banner_when_bypass_on(
-    bypass_env: None, caplog: pytest.LogCaptureFixture
-) -> None:
+def test_startup_banner_when_bypass_on(bypass_env: None, caplog: pytest.LogCaptureFixture) -> None:
     from nz_openbank_mcp.server import log_startup_banner
 
     with caplog.at_level(logging.WARNING, logger="nz_openbank_mcp.server"):
@@ -483,9 +475,7 @@ def test_startup_banner_when_bypass_on(
     assert "refresh_account" in blob
 
 
-def test_startup_banner_when_readonly(
-    fake_env: None, caplog: pytest.LogCaptureFixture
-) -> None:
+def test_startup_banner_when_readonly(fake_env: None, caplog: pytest.LogCaptureFixture) -> None:
     from nz_openbank_mcp.server import log_startup_banner
 
     with caplog.at_level(logging.INFO, logger="nz_openbank_mcp.server"):
@@ -514,9 +504,7 @@ def test_configure_logging_suppresses_sensitive_http_client_logs() -> None:
             logging.getLogger(logger_name).setLevel(level)
 
 
-def test_main_constructs_and_runs(
-    fake_env: None, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_main_constructs_and_runs(fake_env: None, monkeypatch: pytest.MonkeyPatch) -> None:
     """main() must build the server and call .run(); we verify the call site."""
     from nz_openbank_mcp import server
 
@@ -530,9 +518,7 @@ def test_main_constructs_and_runs(
     assert called["run"] is True
 
 
-def test_http_main_constructs_and_runs(
-    fake_env: None, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_http_main_constructs_and_runs(fake_env: None, monkeypatch: pytest.MonkeyPatch) -> None:
     """http_main() must build the auth server and use Streamable HTTP."""
     from nz_openbank_mcp import server
 
