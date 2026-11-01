@@ -37,6 +37,10 @@ but write tools refuse before calling Akahu. Do not set
 `AKAHU_AUTOMATION_BYPASS=true` unless an operator has explicitly approved an
 unattended automation use case and read-only mode has already been disabled.
 
+Run the HTTP server as a single process. On 2026-07-28 MCP connections, write
+consent spans two requests and its state is held in process memory, so a
+retry that lands on another worker is refused.
+
 The default deployment must not expose this banking MCP surface through public
 Caddy, nginx, ngrok, or another internet-reachable reverse proxy. A public
 endpoint turns a local personal-banking tool into a remote attack surface.
