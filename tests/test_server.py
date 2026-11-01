@@ -12,6 +12,7 @@ from pydantic import SecretStr
 from starlette.testclient import TestClient
 
 BEARER = "http_token_test_0123456789abcdef0123"
+SIGNING_KEY = "jwt_signing_key_test_0123456789abcdef"
 
 
 def _oauth_config() -> Any:
@@ -22,6 +23,8 @@ def _oauth_config() -> Any:
         google_client_secret="google-secret",
         public_base_url="https://mcp.example.com/openbank-mcp",
         allowed_users="owner@example.com",
+        jwt_signing_key=SIGNING_KEY,
+        state_dir="/var/lib/nz-openbank-mcp",
     )
 
 
@@ -144,6 +147,8 @@ def test_http_server_oauth_mode_loads_oauth_env(
         "https://mcp.example.com/openbank-mcp",
     )
     monkeypatch.setenv("NZ_OPENBANK_MCP_ALLOWED_USERS", "owner@example.com")
+    monkeypatch.setenv("NZ_OPENBANK_MCP_JWT_SIGNING_KEY", SIGNING_KEY)
+    monkeypatch.setenv("NZ_OPENBANK_MCP_STATE_DIR", "/var/lib/nz-openbank-mcp")
 
     mcp = build_http_server(
         McpHttpConfig(auth_mode="oauth"),
@@ -174,6 +179,8 @@ def test_oauth_provider_allowlist_accepts_users_and_domains() -> None:
         base_url="https://mcp.example.com/openbank-mcp",
         allowed_users=["Owner@Example.com"],
         allowed_domains=["Example.org"],
+        jwt_signing_key=SIGNING_KEY,
+        allowed_redirect_uris=["https://claude.ai/api/mcp/auth_callback"],
         client_storage=MemoryStore(),
     )
 
@@ -190,7 +197,11 @@ def test_oauth_provider_allowlist_accepts_users_and_domains() -> None:
             token="token",
             client_id="google-user",
             scopes=[],
-            claims={"email": "person@example.org", "email_verified": "true"},
+            claims={
+                "email": "person@example.org",
+                "email_verified": "true",
+                "google_user_data": {"hd": "Example.org"},
+            },
         )
     )
 
@@ -204,6 +215,8 @@ def test_oauth_provider_allowlist_rejects_unverified_or_unknown_email() -> None:
         base_url="https://mcp.example.com/openbank-mcp",
         allowed_users=["owner@example.com"],
         allowed_domains=["example.org"],
+        jwt_signing_key=SIGNING_KEY,
+        allowed_redirect_uris=["https://claude.ai/api/mcp/auth_callback"],
         client_storage=MemoryStore(),
     )
 
@@ -254,6 +267,8 @@ async def test_oauth_provider_load_access_token_filters_allowlist(
         base_url="https://mcp.example.com/openbank-mcp",
         allowed_users=["owner@example.com"],
         allowed_domains=[],
+        jwt_signing_key=SIGNING_KEY,
+        allowed_redirect_uris=["https://claude.ai/api/mcp/auth_callback"],
         client_storage=MemoryStore(),
     )
     allowed = AccessToken(
@@ -303,6 +318,8 @@ async def test_oauth_provider_exchange_authorization_code_enforces_allowlist(
         base_url="https://mcp.example.com/openbank-mcp",
         allowed_users=["owner@example.com"],
         allowed_domains=[],
+        jwt_signing_key=SIGNING_KEY,
+        allowed_redirect_uris=["https://claude.ai/api/mcp/auth_callback"],
         client_storage=MemoryStore(),
     )
     access = AccessToken(
@@ -399,6 +416,8 @@ def test_oauth_provider_without_path_does_not_add_path_aware_alias() -> None:
         base_url="https://example.com",
         allowed_users=["owner@example.com"],
         allowed_domains=[],
+        jwt_signing_key=SIGNING_KEY,
+        allowed_redirect_uris=["https://claude.ai/api/mcp/auth_callback"],
         client_storage=MemoryStore(),
     )
 
@@ -429,6 +448,8 @@ def test_oauth_provider_keeps_routes_when_base_metadata_route_is_absent(
         base_url="https://mcp.example.com/openbank-mcp",
         allowed_users=["owner@example.com"],
         allowed_domains=[],
+        jwt_signing_key=SIGNING_KEY,
+        allowed_redirect_uris=["https://claude.ai/api/mcp/auth_callback"],
         client_storage=MemoryStore(),
     )
 

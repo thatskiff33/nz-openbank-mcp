@@ -49,12 +49,65 @@ NZ_OPENBANK_MCP_GOOGLE_CLIENT_ID=REPLACE_WITH_GOOGLE_CLIENT_ID
 NZ_OPENBANK_MCP_GOOGLE_CLIENT_SECRET=REPLACE_WITH_GOOGLE_CLIENT_SECRET
 NZ_OPENBANK_MCP_PUBLIC_BASE_URL=https://mcp.example.com/openbank-mcp
 NZ_OPENBANK_MCP_ALLOWED_USERS=you@example.com
-# Or:
+# Or, for Google Workspace accounts only:
 # NZ_OPENBANK_MCP_ALLOWED_DOMAINS=example.com
+NZ_OPENBANK_MCP_JWT_SIGNING_KEY=REPLACE_WITH_OUTPUT_OF_openssl_rand_base64_48
 NZ_OPENBANK_MCP_HTTP_HOST=127.0.0.1
 NZ_OPENBANK_MCP_HTTP_PORT=8091
 NZ_OPENBANK_MCP_HTTP_PATH=/mcp
 ```
+
+OAuth mode refuses to start without these:
+
+- `NZ_OPENBANK_MCP_JWT_SIGNING_KEY`: at least 32 bytes. Signs the tokens the
+  server issues to connectors and encrypts stored client registrations. It is
+  independent of the Google client secret, so rotating that secret does not
+  log anyone out. Generate it with `openssl rand -base64 48`.
+- `NZ_OPENBANK_MCP_STATE_DIR`: absolute directory for encrypted client
+  registrations and the upstream Google tokens behind issued sessions.
+  `nz-openbank-http.service` sets it to `/var/lib/nz-openbank-mcp` and creates
+  that directory via `StateDirectory=`; the server keeps its `oauth-proxy/`
+  subdirectory at mode 0700.
+
+Upgrading from a release without these settings: earlier versions kept OAuth
+state under the service user's FastMCP data directory, encrypted with a key
+derived from the Google client secret. After the upgrade, delete it:
+
+```bash
+sudo rm -rf /var/lib/nz-openbank-mcp/.local/share/fastmcp/oauth-proxy
+```
+
+Allowlist semantics:
+
+- `NZ_OPENBANK_MCP_ALLOWED_USERS` matches the verified Google email exactly.
+- `NZ_OPENBANK_MCP_ALLOWED_DOMAINS` matches only Google's hosted-domain (`hd`)
+  claim, which Google sets to the primary domain of a Google Workspace account
+  (secondary and alias domains do not match). A consumer Google
+  account registered on an address at that domain is refused. Use
+  `ALLOWED_USERS` for personal Gmail accounts.
+
+Client redirect URIs accepted at dynamic client registration default to:
+
+```text
+https://claude.ai/api/mcp/auth_callback
+https://claude.com/api/mcp/auth_callback
+https://chatgpt.com/connector_platform_oauth_redirect
+http://localhost:*
+http://127.0.0.1:*
+```
+
+Override with a comma-separated `NZ_OPENBANK_MCP_ALLOWED_REDIRECT_URIS`. Entries
+must be `https` with an exact path (no wildcards), or plain `http` on a loopback
+host. ChatGPT uses the stable callback above because the server
+advertises RFC 9207 issuer identification.
+
+The allowlist limits which platforms can receive authorization codes, not which
+accounts on them: anyone can point their own Claude or ChatGPT connector at the
+server. The consent screen is the control for that, so approve only connection
+requests you started yourself.
+Callback references:
+[Claude connector authentication](https://claude.com/docs/connectors/building/authentication),
+[OpenAI connector authentication](https://developers.openai.com/plugins/build/auth).
 
 Bearer mode remains available for approved clients that cannot use OAuth:
 
@@ -101,8 +154,8 @@ Create a Google OAuth client for this server in Google Cloud Console:
    `/etc/nz-openbank-mcp/nz-openbank.env`. Do not commit `client_secret.json` or raw
    secret values.
 9. Set `NZ_OPENBANK_MCP_ALLOWED_USERS` to exact Google email addresses that may
-   use the connector, or set `NZ_OPENBANK_MCP_ALLOWED_DOMAINS` to allowed hosted
-   domains.
+   use the connector, or set `NZ_OPENBANK_MCP_ALLOWED_DOMAINS` to Google
+   Workspace domains (matched against the `hd` claim, not the email suffix).
 
 The redirect URI must exactly match the Google OAuth client. If it differs by
 scheme, host, path, or trailing path segment, Google returns
@@ -125,6 +178,7 @@ sudo install -o root -g root -m 0644 \
   deploy/linux-systemd/nz-openbank-http.service \
   /etc/systemd/system/nz-openbank-http.service
 sudo systemd-analyze verify /etc/systemd/system/nz-openbank-http.service
+sudo systemd-analyze security nz-openbank-http.service
 sudo systemctl daemon-reload
 sudo systemctl enable --now nz-openbank-http.service
 sudo systemctl status nz-openbank-http.service

@@ -29,6 +29,15 @@ ENV_FILE_VAR = "AKAHU_ENV_FILE"
 ALLOW_CUSTOM_BASE_URL_VAR = "AKAHU_ALLOW_CUSTOM_BASE_URL"
 AKAHU_API_HOST = "api.akahu.io"
 MIN_BEARER_TOKEN_LENGTH = 32
+MIN_JWT_SIGNING_KEY_BYTES = 32
+DEFAULT_ALLOWED_REDIRECT_URIS = (
+    "https://claude.ai/api/mcp/auth_callback",
+    "https://claude.com/api/mcp/auth_callback",
+    "https://chatgpt.com/connector_platform_oauth_redirect",
+    "http://localhost:*",
+    "http://127.0.0.1:*",
+)
+_LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 # Windows reports every file as group/other writable, so the mode check is POSIX only.
 _POSIX = os.name == "posix"
 
@@ -306,10 +315,41 @@ class McpOAuthConfig(_Settings):
             "NZ_OPENBANK_MCP_ALLOWED_DOMAINS",
             "OPENBANK_MCP_ALLOWED_DOMAINS",
         ),
-        description="Comma-separated allowlist of Google email domains",
+        description="Comma-separated allowlist of primary Google Workspace domains (hd claim)",
+    )
+    jwt_signing_key: SecretStr = Field(
+        default=SecretStr(""),
+        validation_alias=AliasChoices(
+            "NZ_OPENBANK_MCP_JWT_SIGNING_KEY",
+            "OPENBANK_MCP_JWT_SIGNING_KEY",
+        ),
+        description="Key for FastMCP-issued tokens and client storage encryption",
+    )
+    state_dir: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "NZ_OPENBANK_MCP_STATE_DIR",
+            "OPENBANK_MCP_STATE_DIR",
+        ),
+        description="Absolute directory for durable OAuth client registrations",
+    )
+    allowed_redirect_uris: str = Field(
+        default=",".join(DEFAULT_ALLOWED_REDIRECT_URIS),
+        validation_alias=AliasChoices(
+            "NZ_OPENBANK_MCP_ALLOWED_REDIRECT_URIS",
+            "OPENBANK_MCP_ALLOWED_REDIRECT_URIS",
+        ),
+        description="Comma-separated client redirect URI patterns accepted at registration",
     )
 
-    @field_validator("google_client_id", "public_base_url", "allowed_users", "allowed_domains")
+    @field_validator(
+        "google_client_id",
+        "public_base_url",
+        "allowed_users",
+        "allowed_domains",
+        "state_dir",
+        "allowed_redirect_uris",
+    )
     @classmethod
     def _strip_string(cls, value: str) -> str:
         """Normalize whitespace-heavy env values."""
@@ -352,7 +392,26 @@ class McpOAuthConfig(_Settings):
                 "oauth allowlist is required for HTTP oauth mode. Set allowed users "
                 "or allowed domains."
             )
+        key = self.jwt_signing_key.get_secret_value().strip()
+        if len(key.encode("utf-8")) < MIN_JWT_SIGNING_KEY_BYTES:
+            raise ValueError(
+                f"NZ_OPENBANK_MCP_JWT_SIGNING_KEY of at least {MIN_JWT_SIGNING_KEY_BYTES} "
+                "bytes is required for HTTP oauth mode"
+            )
+        if not self.state_dir or not Path(self.state_dir).is_absolute():
+            raise ValueError(
+                "NZ_OPENBANK_MCP_STATE_DIR must be an absolute path for HTTP oauth mode"
+            )
+        if not self.allowed_redirect_uri_list:
+            raise ValueError("oauth allowed redirect uris must not be empty")
+        for pattern in self.allowed_redirect_uri_list:
+            _validate_redirect_pattern(pattern)
         return self
+
+    @property
+    def allowed_redirect_uri_list(self) -> list[str]:
+        """Client redirect URI patterns accepted at dynamic client registration."""
+        return [part.strip() for part in self.allowed_redirect_uris.split(",") if part.strip()]
 
     @property
     def allowed_user_set(self) -> frozenset[str]:
@@ -375,6 +434,31 @@ class McpOAuthConfig(_Settings):
 def _split_csv_lower(value: str) -> tuple[str, ...]:
     """Split comma-separated config into lowercase non-empty entries."""
     return tuple(part.strip().lower() for part in value.split(",") if part.strip())
+
+
+def _validate_redirect_pattern(pattern: str) -> None:
+    """Allow https patterns, or plain http only on a loopback host."""
+    parsed = urlsplit(pattern)
+    netloc = parsed.netloc
+    if netloc.startswith("["):
+        host = netloc[1 : netloc.find("]")].lower()
+    else:
+        host = netloc.rsplit(":", 1)[0].lower()
+    if "@" in netloc or not host or parsed.query or parsed.fragment:
+        raise ValueError(f"oauth redirect uri pattern is not a plain URL: {pattern}")
+    if "*" in host:
+        raise ValueError(f"oauth redirect uri pattern must not wildcard the host: {pattern}")
+    if parsed.scheme == "https":
+        # FastMCP treats an empty or "/" pattern path as "any path on this host",
+        # and its fnmatch "*" crosses "/", so https entries must be exact paths.
+        if parsed.path in ("", "/"):
+            raise ValueError(f"oauth redirect uri pattern must include a path: {pattern}")
+        if "*" in parsed.path:
+            raise ValueError(f"oauth redirect uri pattern must not wildcard the path: {pattern}")
+        return
+    if parsed.scheme == "http" and host in _LOOPBACK_HOSTS:
+        return
+    raise ValueError(f"oauth redirect uri pattern must be https or http loopback: {pattern}")
 
 
 def _normalise_domain(value: str) -> str:

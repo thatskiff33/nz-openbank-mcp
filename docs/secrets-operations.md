@@ -25,6 +25,8 @@ It contains only runtime values:
 - `CONTROL_PLANE_API_KEY`
 - `AKAHU_APP_TOKEN`
 - `AKAHU_USER_TOKEN`
+- for the HTTP service: `NZ_OPENBANK_MCP_GOOGLE_CLIENT_SECRET`,
+  `NZ_OPENBANK_MCP_JWT_SIGNING_KEY` or `NZ_OPENBANK_MCP_BEARER_TOKEN`
 - safety and logging settings
 
 The systemd unit is:
@@ -167,6 +169,48 @@ compromised.
 Deleting a Personal App revokes its credentials immediately. Treat this as a
 breaking change until the new values are installed and the connector is
 verified.
+
+## Rotate OAuth JWT Signing Key
+
+Use this when `NZ_OPENBANK_MCP_JWT_SIGNING_KEY` is exposed or intentionally
+rotated. Rotation signs every connector out and makes stored state
+undecryptable, so connectors re-register and users sign in again.
+
+`/var/lib/nz-openbank-mcp/oauth-proxy` holds client registrations, pending
+authorization codes, token mappings and the upstream Google access and refresh
+tokens, all encrypted with a key derived from the signing key. Anyone holding
+the old key and a copy of that directory (including backups) can decrypt them.
+
+1. Generate a new key:
+
+   ```bash
+   openssl rand -base64 48
+   ```
+
+2. Stop `nz-openbank-http.service`.
+3. Replace only `NZ_OPENBANK_MCP_JWT_SIGNING_KEY` with `sudoedit
+   /etc/nz-openbank-mcp/nz-openbank.env`.
+4. Remove the old encrypted state. This is required when the key was exposed:
+
+   ```bash
+   sudo rm -rf /var/lib/nz-openbank-mcp/oauth-proxy
+   ```
+
+5. If the key was exposed, also rotate the Google client secret (below) and ask
+   each allowed user to remove the app's access at
+   https://myaccount.google.com/permissions, which revokes the stored Google
+   refresh tokens. The server requests only `openid email profile`.
+6. Start the service and reconnect each connector.
+
+## Rotate Google OAuth Client Secret
+
+The signing key is independent of the Google client secret, so rotating the
+secret does not sign connectors out.
+
+1. In Google Cloud Console, open the OAuth client and add a new secret.
+2. Replace `NZ_OPENBANK_MCP_GOOGLE_CLIENT_SECRET` with `sudoedit`.
+3. Restart `nz-openbank-http.service` and confirm a connector still works.
+4. Disable and delete the old secret in Google Cloud Console.
 
 ## Rotate OpenAI Runtime API Key
 

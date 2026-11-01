@@ -240,13 +240,21 @@ export NZ_OPENBANK_MCP_GOOGLE_CLIENT_ID="client-id.apps.googleusercontent.com"
 export NZ_OPENBANK_MCP_GOOGLE_CLIENT_SECRET="client-secret"
 export NZ_OPENBANK_MCP_PUBLIC_BASE_URL="https://mcp.example.com/openbank-mcp"
 export NZ_OPENBANK_MCP_ALLOWED_USERS="you@example.com"
-# Or restrict by hosted domain:
+# Or allow a primary Google Workspace domain (matched on the hd claim, not the email):
 # export NZ_OPENBANK_MCP_ALLOWED_DOMAINS="example.com"
+export NZ_OPENBANK_MCP_JWT_SIGNING_KEY="$(openssl rand -base64 48)"  # 32+ bytes, keep stable
+export NZ_OPENBANK_MCP_STATE_DIR="$HOME/.local/state/nz-openbank-mcp"
 export NZ_OPENBANK_MCP_HTTP_HOST=127.0.0.1
 export NZ_OPENBANK_MCP_HTTP_PORT=8091
 export NZ_OPENBANK_MCP_HTTP_PATH=/mcp
 uv run nz-openbank-mcp-http
 ```
+
+OAuth mode refuses to start without the signing key and an absolute state
+directory. Connector redirect URIs are limited to the Claude and ChatGPT
+callbacks plus loopback; see
+[docs/public-https-streamable-http.md](docs/public-https-streamable-http.md)
+for the list and `NZ_OPENBANK_MCP_ALLOWED_REDIRECT_URIS`.
 
 ### Google OAuth setup for web connectors
 

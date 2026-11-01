@@ -11,19 +11,42 @@ User=nz-openbank-mcp
 Group=nz-openbank-mcp
 WorkingDirectory=/opt/nz-openbank-mcp
 EnvironmentFile=/etc/nz-openbank-mcp/nz-openbank.env
+Environment=NZ_OPENBANK_MCP_STATE_DIR=/var/lib/nz-openbank-mcp
+Environment=FASTMCP_HOME=/var/lib/nz-openbank-mcp/fastmcp
 ExecStart=/opt/nz-openbank-mcp/.venv/bin/nz-openbank-mcp-http
 Restart=on-failure
 RestartSec=5s
-
+StateDirectory=nz-openbank-mcp
+StateDirectoryMode=0750
+UMask=0077
 NoNewPrivileges=true
+PrivateDevices=true
 PrivateTmp=true
+ProtectClock=true
+ProtectControlGroups=true
 ProtectHome=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectProc=invisible
+ProcSubset=pid
 ProtectSystem=strict
 ReadWritePaths=/var/lib/nz-openbank-mcp
-RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=true
 RestrictRealtime=true
+RestrictSUIDSGID=true
+RemoveIPC=true
 SystemCallArchitectures=native
-UMask=0077
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+SystemCallErrorNumber=EPERM
+CapabilityBoundingSet=
+AmbientCapabilities=
+LockPersonality=true
+MemoryDenyWriteExecute=true
+DevicePolicy=closed
 
 [Install]
 WantedBy=multi-user.target

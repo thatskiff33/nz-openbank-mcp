@@ -141,6 +141,8 @@ def test_env_file_applies_to_http_and_oauth_settings(
         "NZ_OPENBANK_MCP_GOOGLE_CLIENT_SECRET=client-secret\n"
         "NZ_OPENBANK_MCP_PUBLIC_BASE_URL=https://mcp.example.com/openbank-mcp\n"
         "NZ_OPENBANK_MCP_ALLOWED_USERS=owner@example.com\n"
+        "NZ_OPENBANK_MCP_JWT_SIGNING_KEY=jwt_signing_key_test_0123456789abcdef\n"
+        "NZ_OPENBANK_MCP_STATE_DIR=/var/lib/nz-openbank-mcp\n"
     )
     env_file.chmod(0o600)
     monkeypatch.setenv("AKAHU_ENV_FILE", str(env_file))
@@ -384,6 +386,8 @@ def test_working_directory_dotenv_ignored_by_http_and_oauth_settings(
     monkeypatch.setenv("NZ_OPENBANK_MCP_PUBLIC_BASE_URL", "https://mcp.example.com/openbank-mcp")
     monkeypatch.setenv("NZ_OPENBANK_MCP_ALLOWED_USERS", "owner@example.com")
     monkeypatch.delenv("NZ_OPENBANK_MCP_ALLOWED_DOMAINS", raising=False)
+    monkeypatch.setenv("NZ_OPENBANK_MCP_JWT_SIGNING_KEY", "jwt_signing_key_test_0123456789abcdef")
+    monkeypatch.setenv("NZ_OPENBANK_MCP_STATE_DIR", "/var/lib/nz-openbank-mcp")
     (tmp_path / ".env").write_text(
         "NZ_OPENBANK_MCP_HTTP_HOST=0.0.0.0\nNZ_OPENBANK_MCP_ALLOWED_DOMAINS=attacker.example\n"
     )

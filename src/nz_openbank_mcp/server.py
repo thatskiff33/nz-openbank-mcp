@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -14,6 +15,7 @@ from nz_openbank_mcp.config import AKAHU_API_HOST, AkahuConfig, McpHttpConfig, M
 from nz_openbank_mcp.http_auth import (
     AllowlistedGoogleOAuthProvider,
     StaticBearerAuthProvider,
+    durable_client_storage,
 )
 from nz_openbank_mcp.safety import bypass_eligible_tools
 from nz_openbank_mcp.tools import accounts, identity, transactions
@@ -53,12 +55,17 @@ def build_http_server(
     if http_cfg.auth_mode == "oauth":
         if oauth_cfg is None:
             oauth_cfg = McpOAuthConfig()
+        signing_key = oauth_cfg.jwt_signing_key.get_secret_value().strip()
+        if oauth_client_storage is None:
+            oauth_client_storage = durable_client_storage(Path(oauth_cfg.state_dir), signing_key)
         auth: AuthProvider = AllowlistedGoogleOAuthProvider(
             client_id=oauth_cfg.google_client_id,
             client_secret=oauth_cfg.google_client_secret.get_secret_value(),
             base_url=oauth_cfg.public_base_url,
             allowed_users=oauth_cfg.allowed_user_set,
             allowed_domains=oauth_cfg.allowed_domain_set,
+            jwt_signing_key=signing_key,
+            allowed_redirect_uris=oauth_cfg.allowed_redirect_uri_list,
             client_storage=oauth_client_storage,
         )
         return build_server(auth=auth)
