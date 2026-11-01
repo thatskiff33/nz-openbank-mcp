@@ -20,14 +20,26 @@ OAUTH_ENV_VARS = (
     "OPENBANK_MCP_ALLOWED_USERS",
     "NZ_OPENBANK_MCP_ALLOWED_DOMAINS",
     "OPENBANK_MCP_ALLOWED_DOMAINS",
+    "NZ_OPENBANK_MCP_JWT_SIGNING_KEY",
+    "OPENBANK_MCP_JWT_SIGNING_KEY",
+    "NZ_OPENBANK_MCP_STATE_DIR",
+    "OPENBANK_MCP_STATE_DIR",
+    "NZ_OPENBANK_MCP_ALLOWED_REDIRECT_URIS",
+    "OPENBANK_MCP_ALLOWED_REDIRECT_URIS",
 )
+SIGNING_KEY = "jwt_signing_key_test_0123456789abcdef"
 
 
 @pytest.fixture
 def clean_oauth_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
-    """Remove OAuth env vars that could be present on a developer host."""
+    """Remove OAuth env vars that could be present on a developer host.
+
+    Signing key and state dir are set so each test varies only what it covers.
+    """
     for key in OAUTH_ENV_VARS:
         monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("NZ_OPENBANK_MCP_JWT_SIGNING_KEY", SIGNING_KEY)
+    monkeypatch.setenv("NZ_OPENBANK_MCP_STATE_DIR", "/var/lib/nz-openbank-mcp")
     yield
 
 
