@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from fastmcp import Context, FastMCP
@@ -14,6 +15,7 @@ from nz_openbank_mcp.tool_metadata import (
     IDEMPOTENT_WRITE_ANNOTATIONS,
     READ_ONLY_ANNOTATIONS,
 )
+from nz_openbank_mcp.tools.transactions import summarise_pending
 
 server: FastMCP[Any] = FastMCP("accounts")
 
@@ -38,14 +40,12 @@ def _summarise_account(account: Account) -> dict[str, Any]:
 async def list_accounts() -> dict[str, Any]:
     """List every connected account with masked numbers and formatted balances.
 
-    Returns:
-        {"accounts": [...]} where each entry has:
-          id, name, type (CHECKING/SAVINGS/CREDITCARD/FOREIGN/...),
-          status, formatted_account (masked, e.g. "01-****-***4567-00"),
-          connection (institution name, e.g. "ANZ"),
-          balance (formatted with currency, e.g. "$2,543.21" or "USD 100.00"),
-          currency (ISO 4217 code).
-        balance and currency are None if the account has no balance block.
+    Returns {"accounts": [...]} where each entry has id, name, type
+    (CHECKING/SAVINGS/CREDITCARD/FOREIGN/...), status, formatted_account
+    (masked, e.g. "01-****-***4567-00"), connection (institution name, e.g.
+    "ANZ"), balance (formatted with currency, e.g. "$2,543.21" or
+    "USD 100.00") and currency (ISO 4217 code). balance and currency are None
+    if the account has no balance block.
     """
     accounts = await deps.get_client().list_accounts()
     return {"accounts": [_summarise_account(a) for a in accounts]}
@@ -70,34 +70,24 @@ async def get_account(account_id: str) -> dict[str, Any]:
 async def get_pending_transactions(account_id: str) -> dict[str, Any]:
     """List pending (not-yet-settled) transactions for one account.
 
-    Pending entries affect available balance immediately; include them in
-    short-horizon balance projections. Amounts are formatted in the parent
-    account's currency.
-
-    Returns {"account_id", "transactions": [...]} where each transaction has:
-    id, date (YYYY-MM-DD), description, amount (formatted, e.g. "-$5.50"),
-    amount_raw (float; negative = debit), type.
+    Pending entries affect available balance immediately and can change or
+    vanish before they settle. Returns {"account_id", "transactions": [...]}
+    where each transaction has account_id, date (YYYY-MM-DD, NZ calendar day),
+    description, amount (formatted in the account's currency, e.g. "-$5.50"),
+    amount_raw (float; negative = debit), currency, type and pending (always
+    true). Pending entries have no id.
 
     Args:
         account_id: Akahu account id.
     """
     client = deps.get_client()
-    account = await client.get_account(account_id)
-    currency = account.balance.currency if account.balance else "NZD"
-    txns = await client.get_account_pending_transactions(account_id)
+    account, txns = await asyncio.gather(
+        client.get_account(account_id), client.get_account_pending_transactions(account_id)
+    )
+    currency = account.balance.currency if account.balance and account.balance.currency else "NZD"
     return {
         "account_id": account_id,
-        "transactions": [
-            {
-                "id": t.id,
-                "date": t.date.date().isoformat(),
-                "description": t.description,
-                "amount": format_money(t.amount, currency),
-                "amount_raw": t.amount,
-                "type": t.type,
-            }
-            for t in txns
-        ],
+        "transactions": [summarise_pending(t, currency) for t in txns],
     }
 
 
@@ -139,10 +129,8 @@ async def refresh_all_accounts(*, ctx: Context) -> dict[str, Any]:
 
     Rate-limited by your bank. Idempotent within rate-limit windows. Use
     before a query that needs the freshest balance or transaction data.
-    Requires write consent unless AKAHU_AUTOMATION_BYPASS=true.
-
-    Returns:
-        {"success": bool, "message": str | None}.
+    Requires write consent unless AKAHU_AUTOMATION_BYPASS=true. Returns
+    {"success": bool, "message": str | None}.
     """
     result = await deps.get_client().refresh_all()
     return {"success": result.success, "message": result.message}

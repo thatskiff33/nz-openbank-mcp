@@ -49,7 +49,7 @@ ignores `uv.lock`.
 | `src/nz_openbank_mcp/config.py` | `AkahuConfig` (`AKAHU_*` settings) |
 | `src/nz_openbank_mcp/deps.py` | Shared client (`get_client`, `aclose_client`) |
 | `src/nz_openbank_mcp/safety.py` | `@require_write_consent` |
-| `src/nz_openbank_mcp/formatting.py` | `format_money`, `mask_account`, `parse_iso_date` |
+| `src/nz_openbank_mcp/formatting.py` | `format_money`, `mask_account`, `local_date`, `akahu_bound`, `parse_iso_date` |
 
 A sub-server's tools are exposed as `<namespace>_<function>`. New tools go in
 an existing `tools/` module with `@server.tool`; a new group is a new module
@@ -95,11 +95,18 @@ banner.
 
 **Data handling:**
 
-- Every account number shown goes through `mask_account`.
+- Every account number shown goes through `mask_account`, which fails
+  closed: formats other than NZ keep only their last four digits.
 - `format_money` renders NZD as `$1,234.56` and other codes as
   `USD 1,234.56`; an empty code means NZD.
-- Akahu transactions have no currency field, so `txn_*` tools format in NZD;
-  callers needing the real currency use `acct_get_account`.
+- Akahu transactions have no currency field. Tools format each one in its
+  account's currency, from one `/accounts` call per invocation
+  (`currency_map`).
+- Every emitted date goes through `local_date` (NZ calendar day). Date filter
+  inputs go through `akahu_bound`, which turns a bare YYYY-MM-DD into the
+  UTC instant Akahu's exclusive `start` / inclusive `end` need.
+- Pending items are `PendingTransaction` (no `_id`); output them with
+  `summarise_pending`.
 - Tokens are `SecretStr`; call `get_secret_value()` only where headers are
   built. Never log tokens or response bodies.
 

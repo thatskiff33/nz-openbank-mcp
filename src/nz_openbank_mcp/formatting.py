@@ -1,14 +1,18 @@
-"""Small display helpers: currency formatting, account masking, ISO date parsing."""
+"""Small display helpers: currency, account masking, NZ dates, ISO parsing."""
 
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import ROUND_HALF_EVEN, Decimal
+from zoneinfo import ZoneInfo
 
 # NZ bank-account format: BB-bbbb-AAAAAAA-SS
 # (bank code - branch - account number - suffix)
 _NZ_ACCOUNT_RE = re.compile(r"^(\d{2})-(\d{4})-(\d{7})-(\d{2,3})$")
+_DATE_ONLY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+NZ_TZ = ZoneInfo("Pacific/Auckland")
 
 
 def format_money(amount: float | int | Decimal, currency: str = "NZD") -> str:
@@ -37,20 +41,57 @@ def format_money(amount: float | int | Decimal, currency: str = "NZD") -> str:
 
 
 def mask_account(formatted: str | None) -> str:
-    """Mask the middle of a NZ account number, preserving bank + last 4 of account.
+    """Mask an account identifier, keeping only what identifies it to its owner.
 
-    Input:  '<bank>-<branch>-<account>-<suffix>'
-    Output: '<bank>-****-***<last4>-<suffix>'
-    Any non-matching input passes through unchanged (empty for None).
+    NZ format '<bank>-<branch>-<account>-<suffix>' becomes
+    '<bank>-****-***<last4>-<suffix>'. Any other format has every digit except
+    the last four replaced with '*', separators kept. None becomes ''.
     """
     if not formatted:
         return ""
     match = _NZ_ACCOUNT_RE.match(formatted)
-    if not match:
-        return formatted
-    bank, _branch, account, suffix = match.groups()
-    last4 = account[-4:]
-    return f"{bank}-****-***{last4}-{suffix}"
+    if match:
+        bank, _branch, account, suffix = match.groups()
+        return f"{bank}-****-***{account[-4:]}-{suffix}"
+    to_mask = sum(ch.isdigit() for ch in formatted) - 4
+    masked: list[str] = []
+    for ch in formatted:
+        if ch.isdigit() and to_mask > 0:
+            masked.append("*")
+            to_mask -= 1
+        else:
+            masked.append(ch)
+    return "".join(masked)
+
+
+def local_date(value: datetime) -> str:
+    """NZ calendar date (YYYY-MM-DD) of an Akahu timestamp; naive means UTC."""
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    return value.astimezone(NZ_TZ).date().isoformat()
+
+
+def nz_today() -> date:
+    return datetime.now(NZ_TZ).date()
+
+
+def akahu_bound(value: str | None, *, end: bool) -> str | None:
+    """Translate a date filter into an Akahu `start`/`end` query value.
+
+    A bare YYYY-MM-DD is an NZ calendar day, inclusive at both ends. Akahu's
+    `start` is exclusive and `end` inclusive, so both become the instant just
+    before the relevant NZ midnight, in UTC. Anything else passes through.
+    """
+    if value is None:
+        return None
+    text = value.strip()
+    if not _DATE_ONLY_RE.match(text):
+        return text
+    day = date.fromisoformat(text)
+    if end:
+        day += timedelta(days=1)
+    instant = datetime.combine(day, time(), NZ_TZ) - timedelta(milliseconds=1)
+    return instant.astimezone(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
 def parse_iso_date(value: str) -> datetime:

@@ -260,12 +260,11 @@ async def test_account_pending_transactions(
     fake_env: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from nz_openbank_mcp import deps
-    from nz_openbank_mcp.models import Transaction
+    from nz_openbank_mcp.models import PendingTransaction
     from nz_openbank_mcp.tools.accounts import get_pending_transactions
 
-    txn = Transaction.model_validate(
+    txn = PendingTransaction.model_validate(
         {
-            "_id": "ptxn_1",
             "_account": "acc_chq_001",
             "date": "2026-05-22T00:00:00Z",
             "description": "PENDING - COFFEE",
@@ -279,9 +278,21 @@ async def test_account_pending_transactions(
     client.get_account_pending_transactions = AsyncMock(return_value=[txn])
     monkeypatch.setattr(deps, "get_client", lambda: client)
     result = await get_pending_transactions(account_id="acc_chq_001")
-    assert result["account_id"] == "acc_chq_001"
-    assert len(result["transactions"]) == 1
-    assert result["transactions"][0]["amount"] == "-$5.50"
+    assert result == {
+        "account_id": "acc_chq_001",
+        "transactions": [
+            {
+                "account_id": "acc_chq_001",
+                "date": "2026-05-22",
+                "description": "PENDING - COFFEE",
+                "amount": "-$5.50",
+                "amount_raw": -5.5,
+                "currency": "NZD",
+                "type": "EFTPOS",
+                "pending": True,
+            }
+        ],
+    }
 
 
 async def test_account_pending_transactions_uses_account_currency(
@@ -289,12 +300,11 @@ async def test_account_pending_transactions_uses_account_currency(
 ) -> None:
     """Pending txn amounts honour the parent account's currency (e.g. Wise USD)."""
     from nz_openbank_mcp import deps
-    from nz_openbank_mcp.models import Transaction
+    from nz_openbank_mcp.models import PendingTransaction
     from nz_openbank_mcp.tools.accounts import get_pending_transactions
 
-    txn = Transaction.model_validate(
+    txn = PendingTransaction.model_validate(
         {
-            "_id": "ptxn_usd",
             "_account": "acc_wise_usd",
             "date": "2026-05-22T00:00:00Z",
             "description": "PENDING - SUBSCRIPTION",
@@ -325,12 +335,11 @@ async def test_account_pending_transactions_no_balance_defaults_to_nzd(
 ) -> None:
     """If the parent account has no balance block, fall back to NZD formatting."""
     from nz_openbank_mcp import deps
-    from nz_openbank_mcp.models import Transaction
+    from nz_openbank_mcp.models import PendingTransaction
     from nz_openbank_mcp.tools.accounts import get_pending_transactions
 
-    txn = Transaction.model_validate(
+    txn = PendingTransaction.model_validate(
         {
-            "_id": "ptxn_nobal",
             "_account": "acc_x",
             "date": "2026-05-22T00:00:00Z",
             "description": "PENDING",

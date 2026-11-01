@@ -27,7 +27,7 @@ off until you turn writes on.
 | `txn_get_transaction` | | One transaction by id |
 | `txn_get_transactions_by_ids` | | Several transactions in one request |
 | `txn_get_pending_transactions` | | Unsettled transactions across all accounts |
-| `txn_search_transactions` | | Case-insensitive text search over description and merchant (default 50) |
+| `txn_search_transactions` | | Case-insensitive text search over description and merchant, last 90 days unless given a start date (default 50) |
 | `id_get_me` | | The Akahu user's profile |
 | `acct_refresh_all_accounts` | yes | Ask Akahu to fetch fresh data for every account |
 | `acct_refresh_account` | yes | Ask Akahu to fetch fresh data for one account |
@@ -230,18 +230,25 @@ banks, payments or webhooks.
 [my.akahu.nz/developers](https://my.akahu.nz/developers); without it Akahu
 answers 403.
 
-Akahu transactions carry no currency of their own, so the `txn_*` tools show
-amounts in NZD even for foreign-currency accounts; read the account's
-currency with `acct_get_account`. `acct_get_pending_transactions` already uses
-the account's currency.
+Pending transactions have no id, can change before they settle, and are
+marked `"pending": true`.
+
+## Dates and amounts
+
+Dates are New Zealand calendar days (`Pacific/Auckland`), even though Akahu
+stores UTC timestamps. A date-only filter such as `start_date=2026-10-18`
+covers that whole NZ day, at either end of a range; a full ISO 8601 timestamp
+is passed to Akahu unchanged. Amounts are formatted in each account's
+currency, so a USD account shows `-USD 9.99`.
 
 ## Privacy
 
 - NZ account numbers are masked to the bank code, the last four account
-  digits and the suffix. Identifiers in other formats are shown as Akahu
-  returns them.
-- Tokens are never logged. Balances and transaction contents are not logged; request paths, which can
-  include Akahu account or transaction ids, are logged with their status.
+  digits and the suffix. In any other format, every digit but the last four
+  is masked.
+- Tokens are never logged. Balances and transaction contents are not logged;
+  request paths, which can include Akahu account or transaction ids, are
+  logged with their status.
 - By default, over stdio, the server's only network traffic is to
   `api.akahu.io` (plus `uvx` downloading the package). HTTP mode adds Google
   for sign-in.

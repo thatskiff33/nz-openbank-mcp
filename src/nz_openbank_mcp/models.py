@@ -108,6 +108,20 @@ class Transaction(_Base):
     meta: TransactionMeta = Field(default_factory=TransactionMeta)
 
 
+class PendingTransaction(_Base):
+    """A not-yet-settled transaction. Akahu gives these no `_id` or `hash`."""
+
+    account: str = Field(alias="_account")
+    user: str | None = Field(default=None, alias="_user")
+    connection: str | None = Field(default=None, alias="_connection")
+    date: datetime
+    description: str
+    amount: float
+    type: str
+    updated_at: datetime | None = None
+    meta: TransactionMeta = Field(default_factory=TransactionMeta)
+
+
 # ---------- identity ----------
 
 

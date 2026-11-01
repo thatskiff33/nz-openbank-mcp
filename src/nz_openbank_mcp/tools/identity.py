@@ -25,9 +25,8 @@ server: FastMCP[Any] = FastMCP("identity")
 async def get_me() -> dict[str, Any]:
     """Return identity/profile data for the connected Akahu user.
 
-    Returns:
-        {"id": str, "email": str | None, "name": str | None}
-        where name concatenates profile first_name and last_name when present.
+    Returns {"id": str, "email": str | None, "name": str | None}, where name
+    joins the profile's first_name and last_name when present.
     """
     me = await deps.get_client().get_me()
     name: str | None = None

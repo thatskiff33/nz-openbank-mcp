@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "nz-openbank-mcp"
-version = "0.1.1"
+version = "0.1.2"
 description = "Unofficial MCP server for the Akahu open-finance API (New Zealand). Personal Apps, read-by-default, write-with-consent."
 readme = "README.md"
 license = { text = "Apache-2.0" }
@@ -29,6 +29,9 @@ dependencies = [
     "pydantic>=2.14,<3",
     "pydantic-settings>=2.14.2,<3",
     "python-dotenv>=1.2.2,<2",
+    # zoneinfo has no system time zone database on Windows. Calendar-versioned,
+    # so uncapped: newer data is always wanted.
+    "tzdata>=2026.6",
     # Transitive floors and exclusions. uvx ignores uv.lock and may reuse a
     # cached environment, so these keep known-vulnerable or known-broken
     # releases out of plugin and Desktop Extension launches.

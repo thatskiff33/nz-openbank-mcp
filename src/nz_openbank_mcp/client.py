@@ -27,6 +27,7 @@ from nz_openbank_mcp.config import AkahuConfig
 from nz_openbank_mcp.models import (
     Account,
     Me,
+    PendingTransaction,
     RefreshResult,
     SupportRequest,
     Transaction,
@@ -216,16 +217,16 @@ class AkahuClient:
                 return
             cursor = next_cursor
 
-    async def get_pending_transactions(self) -> list[Transaction]:
+    async def get_pending_transactions(self) -> list[PendingTransaction]:
         """All pending transactions across the user's connected accounts."""
         data = await self._request("GET", "/transactions/pending")
-        return [Transaction.model_validate(item) for item in data["items"]]
+        return [PendingTransaction.model_validate(item) for item in data["items"]]
 
-    async def get_account_pending_transactions(self, account_id: str) -> list[Transaction]:
+    async def get_account_pending_transactions(self, account_id: str) -> list[PendingTransaction]:
         """Pending transactions for one specific account."""
         account = self._path_segment(account_id, name="account_id")
         data = await self._request("GET", f"/accounts/{account}/transactions/pending")
-        return [Transaction.model_validate(item) for item in data["items"]]
+        return [PendingTransaction.model_validate(item) for item in data["items"]]
 
     async def get_account_transactions(
         self,
