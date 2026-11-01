@@ -295,3 +295,160 @@ def test_log_level_rejects_unknown(fake_env: None, monkeypatch: pytest.MonkeyPat
 def test_log_level_rejects_non_string(fake_env: None) -> None:
     with pytest.raises(ValidationError, match="log_level"):
         AkahuConfig(log_level=10)  # type: ignore[arg-type]
+
+
+def test_validation_errors_do_not_echo_tokens(
+    fake_env: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("AKAHU_APP_TOKEN", "app_SECRET_value_0123456789")
+    monkeypatch.setenv("AKAHU_READ_ONLY", "true")
+    monkeypatch.setenv("AKAHU_AUTOMATION_BYPASS", "true")
+    with pytest.raises(ValidationError) as bypass_exc:
+        AkahuConfig()
+
+    monkeypatch.delenv("OPENBANK_MCP_BEARER_TOKEN", raising=False)
+    monkeypatch.setenv("NZ_OPENBANK_MCP_BEARER_TOKEN", "SECRET_short")
+    with pytest.raises(ValidationError) as bearer_exc:
+        McpHttpConfig()
+
+    monkeypatch.setenv("NZ_OPENBANK_MCP_GOOGLE_CLIENT_SECRET", "SECRET_GOOGLE")
+    monkeypatch.delenv("NZ_OPENBANK_MCP_GOOGLE_CLIENT_ID", raising=False)
+    monkeypatch.delenv("OPENBANK_MCP_GOOGLE_CLIENT_ID", raising=False)
+    with pytest.raises(ValidationError) as oauth_exc:
+        McpOAuthConfig()
+
+    for exc in (bypass_exc, bearer_exc, oauth_exc):
+        assert "SECRET" not in str(exc.value)
+
+
+def test_fastmcp_settings_ignore_working_directory_dotenv(tmp_path: Path) -> None:
+    import os
+    import subprocess
+    import sys
+
+    (tmp_path / ".env").write_text("FASTMCP_LOG_LEVEL=CRITICAL\n")
+    env = {k: v for k, v in os.environ.items() if not k.startswith("FASTMCP_")}
+    probe = "import nz_openbank_mcp, fastmcp; print(fastmcp.settings.log_level)"
+
+    out = subprocess.run(  # noqa: S603
+        [sys.executable, "-c", probe],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    assert out.stdout.strip() == "INFO"
+
+
+def test_env_file_writable_by_others_is_refused(
+    fake_env: None, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    env_file = tmp_path / "server.env"
+    env_file.write_text("AKAHU_READ_ONLY=false\n")
+    env_file.chmod(0o666)
+    monkeypatch.setenv("AKAHU_ENV_FILE", str(env_file))
+
+    with pytest.raises(ValueError, match="must not be writable by group or others"):
+        AkahuConfig()
+
+
+def test_env_file_mode_not_checked_off_posix(
+    plugin_env: None, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import nz_openbank_mcp.config as config
+
+    env_file = tmp_path / "server.env"
+    env_file.write_text("AKAHU_READ_ONLY=false\n")
+    env_file.chmod(0o666)
+    monkeypatch.setenv("AKAHU_ENV_FILE", str(env_file))
+    monkeypatch.setattr(config, "_POSIX", False)
+
+    assert config.explicit_env_file() == env_file
+
+
+def test_working_directory_dotenv_ignored_by_http_and_oauth_settings(
+    fake_env: None, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    for var in ("NZ_OPENBANK_MCP_HTTP_HOST", "OPENBANK_MCP_HTTP_HOST"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("NZ_OPENBANK_MCP_BEARER_TOKEN", "process_bearer_0123456789abcdef0123")
+    monkeypatch.setenv("NZ_OPENBANK_MCP_GOOGLE_CLIENT_ID", "client-id")
+    monkeypatch.setenv("NZ_OPENBANK_MCP_GOOGLE_CLIENT_SECRET", "client-secret")
+    monkeypatch.setenv("NZ_OPENBANK_MCP_PUBLIC_BASE_URL", "https://mcp.example.com/openbank-mcp")
+    monkeypatch.setenv("NZ_OPENBANK_MCP_ALLOWED_USERS", "owner@example.com")
+    monkeypatch.delenv("NZ_OPENBANK_MCP_ALLOWED_DOMAINS", raising=False)
+    (tmp_path / ".env").write_text(
+        "NZ_OPENBANK_MCP_HTTP_HOST=0.0.0.0\nNZ_OPENBANK_MCP_ALLOWED_DOMAINS=attacker.example\n"
+    )
+    monkeypatch.chdir(tmp_path)
+
+    assert McpHttpConfig().host == "127.0.0.1"
+    assert McpOAuthConfig().allowed_domain_set == frozenset()
+
+
+@pytest.mark.parametrize(
+    ("url", "message"),
+    [
+        ("https://api.akahu.io\t/v1", "whitespace or control"),
+        ("https://api.akahu.io/v 1", "whitespace or control"),
+        ("https://api.akahu.io/v1\x00", "whitespace or control"),
+        ("https://api.akahu.io/v1?", "query string"),
+        ("https://api.akahu.io/v1?x=1", "query string"),
+        ("https://api.akahu.io/v1#", "fragment"),
+    ],
+)
+def test_base_url_rejects_ambiguous_characters(fake_env: None, url: str, message: str) -> None:
+    with pytest.raises(ValidationError, match=message):
+        AkahuConfig(base_url=url)
+
+
+def test_base_url_surrounding_whitespace_is_stripped(
+    fake_env: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("AKAHU_BASE_URL", "  https://api.akahu.io/v1\n")
+
+    assert AkahuConfig().base_url == "https://api.akahu.io/v1"
+
+
+@pytest.mark.parametrize("token", ["tök_" + "a" * 32, "a" * 16 + " " + "a" * 16])
+def test_bearer_token_must_be_visible_ascii(
+    fake_env: None, monkeypatch: pytest.MonkeyPatch, token: str
+) -> None:
+    monkeypatch.delenv("OPENBANK_MCP_BEARER_TOKEN", raising=False)
+    monkeypatch.setenv("NZ_OPENBANK_MCP_BEARER_TOKEN", token)
+
+    with pytest.raises(ValidationError, match="visible ASCII"):
+        McpHttpConfig()
+
+
+@pytest.mark.parametrize("header", [b"Bearer \xff\xfe", "Bearer ünïcödé".encode()])
+def test_http_non_ascii_bearer_header_returns_401(fake_env: None, header: bytes) -> None:
+    from starlette.testclient import TestClient
+
+    from nz_openbank_mcp.server import build_http_server
+
+    cfg = McpHttpConfig(bearer_token=SecretStr("b" * 40))
+    app = build_http_server(cfg).http_app(path=cfg.path, transport="streamable-http")
+
+    with TestClient(app) as client:
+        response = client.post(cfg.path, json={}, headers={"Authorization": header})  # type: ignore[dict-item]
+
+    assert response.status_code == 401
+
+
+def test_banner_warns_when_base_url_is_custom(
+    fake_env: None, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    from nz_openbank_mcp.server import log_startup_banner
+
+    monkeypatch.setenv("AKAHU_ALLOW_CUSTOM_BASE_URL", "true")
+    monkeypatch.setenv("AKAHU_BASE_URL", "https://akahu-mock.example/v1")
+    caplog.set_level(logging.INFO)
+
+    log_startup_banner()
+
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert any("akahu-mock.example" in r.getMessage() for r in warnings)
+    assert "app_token_test" not in caplog.text

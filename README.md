@@ -193,8 +193,10 @@ uv run nz-openbank-mcp
 ```
 
 The server reads configuration from its process environment only. It never
-loads a `.env` file from the working directory. To use an env file (see
-`.env.example`), pass its absolute path:
+loads a `.env` file from the working directory (this includes FastMCP's own
+`FASTMCP_*` settings, unless `FASTMCP_ENV_FILE` is set). To use an env file (see
+`.env.example`), pass its absolute path; on Linux and macOS the file must not be
+writable by group or others:
 
 ```bash
 AKAHU_ENV_FILE=/abs/path/to/nz-openbank.env uv run nz-openbank-mcp
@@ -202,7 +204,10 @@ AKAHU_ENV_FILE=/abs/path/to/nz-openbank.env uv run nz-openbank-mcp
 
 `AKAHU_BASE_URL` must point at `https://api.akahu.io` unless
 `AKAHU_ALLOW_CUSTOM_BASE_URL=true` is set in the process environment; that flag
-is ignored inside an env file.
+is ignored inside an env file, and the server logs a warning at startup when a
+custom host is in use. Set `AKAHU_ENV_FILE` and `AKAHU_ALLOW_CUSTOM_BASE_URL`
+only in your own shell or host config, never in project files checked into a
+repository you cloned.
 
 The server speaks MCP over stdio. Inspect tool calls with:
 

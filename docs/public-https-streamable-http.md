@@ -71,7 +71,7 @@ NZ_OPENBANK_MCP_HTTP_PATH=/mcp
 The app also accepts `OPENBANK_MCP_BEARER_TOKEN`, `OPENBANK_MCP_HTTP_HOST`,
 `OPENBANK_MCP_HTTP_PORT`, `OPENBANK_MCP_HTTP_PATH`, and matching `OPENBANK_MCP_*` OAuth
 names, but the `NZ_OPENBANK_MCP_` names are preferred. The bearer token must be
-at least 32 characters; the server refuses to start in bearer mode otherwise.
+at least 32 visible ASCII characters; the server refuses to start in bearer mode otherwise.
 
 ## Google OAuth Setup
 

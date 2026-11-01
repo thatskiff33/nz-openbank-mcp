@@ -29,6 +29,8 @@ ENV_FILE_VAR = "AKAHU_ENV_FILE"
 ALLOW_CUSTOM_BASE_URL_VAR = "AKAHU_ALLOW_CUSTOM_BASE_URL"
 AKAHU_API_HOST = "api.akahu.io"
 MIN_BEARER_TOKEN_LENGTH = 32
+# Windows reports every file as group/other writable, so the mode check is POSIX only.
+_POSIX = os.name == "posix"
 
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 
@@ -43,6 +45,8 @@ def explicit_env_file() -> Path | None:
         raise ValueError(f"{ENV_FILE_VAR} must be an absolute path")
     if not path.is_file():
         raise ValueError(f"{ENV_FILE_VAR} does not name a file: {path}")
+    if _POSIX and path.stat().st_mode & 0o022:
+        raise ValueError(f"{ENV_FILE_VAR} must not be writable by group or others: {path}")
     return path
 
 
@@ -53,6 +57,9 @@ def custom_base_url_allowed() -> bool:
 
 class _Settings(BaseSettings):
     """Process environment first, then the explicit env file if one is named."""
+
+    # Model-level validation errors otherwise echo the raw input, tokens included.
+    model_config = SettingsConfigDict(hide_input_in_errors=True)
 
     @classmethod
     def settings_customise_sources(
@@ -108,6 +115,13 @@ class AkahuConfig(_Settings):
     @classmethod
     def _validate_base_url(cls, value: str) -> str:
         """Require HTTPS to the Akahu API host unless a custom host is opted in."""
+        value = value.strip()
+        if any(ch.isspace() or not ch.isprintable() for ch in value):
+            raise ValueError("base_url must not contain whitespace or control characters")
+        if "?" in value:
+            raise ValueError("base_url must not include a query string")
+        if "#" in value:
+            raise ValueError("base_url must not include a fragment")
         parsed = urlsplit(value)
         if parsed.scheme != "https":
             raise ValueError("base_url must use https")
@@ -115,10 +129,6 @@ class AkahuConfig(_Settings):
             raise ValueError("base_url must include a host")
         if parsed.username is not None or parsed.password is not None:
             raise ValueError("base_url must not include credentials")
-        if parsed.query:
-            raise ValueError("base_url must not include a query string")
-        if parsed.fragment:
-            raise ValueError("base_url must not include a fragment")
         on_akahu = parsed.hostname == AKAHU_API_HOST and parsed.port in (None, 443)
         if not on_akahu and not custom_base_url_allowed():
             raise ValueError(
@@ -239,6 +249,8 @@ class McpHttpConfig(_Settings):
             raise ValueError(
                 f"mcp bearer token must be at least {MIN_BEARER_TOKEN_LENGTH} characters"
             )
+        if not all("!" <= ch <= "~" for ch in token):
+            raise ValueError("mcp bearer token must be visible ASCII with no spaces")
         return self
 
 
