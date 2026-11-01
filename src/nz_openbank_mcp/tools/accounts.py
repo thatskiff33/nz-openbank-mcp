@@ -74,9 +74,9 @@ async def get_pending_transactions(account_id: str) -> dict[str, Any]:
     vanish before they settle. Returns {"account_id", "transactions": [...]}
     where each transaction has account_id, date (YYYY-MM-DD, NZ calendar day),
     description, amount (formatted in the account's currency, e.g. "-$5.50"),
-    amount_raw (float; negative = debit), currency (None, with a bare-number
-    amount, if the account reports none), type, merchant, category and
-    pending (always true). Pending entries have no id.
+    amount_raw (float; negative = debit), currency (None if the account
+    reports none, in which case amount has no symbol), type, merchant,
+    category and pending (always true). Pending entries have no id.
 
     Args:
         account_id: Akahu account id.

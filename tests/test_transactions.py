@@ -680,7 +680,7 @@ async def test_limit_out_of_range_is_rejected(fake_env: None, patched_client: Ma
     from nz_openbank_mcp.server import build_server
 
     async with Client(build_server()) as c:
-        for bad in (0, 501, "5", True):
+        for bad in (0, 501, "5", True, 2.5):
             with pytest.raises(ToolError, match="limit"):
                 await c.call_tool("txn_get_transactions", {"limit": bad})
     patched_client.iter_transactions.assert_not_called()
@@ -705,3 +705,22 @@ async def test_pending_keeps_enrichment_when_present(
     monkeypatch.setattr(deps, "get_client", lambda: client)
     entry = (await get_pending_transactions())["transactions"][0]
     assert (entry["merchant"], entry["category"]) == ("Demo Cafe", "Cafes")
+
+
+async def test_limit_accepts_whole_number_floats(fake_env: None, patched_client: MagicMock) -> None:
+    from nz_openbank_mcp.server import build_server
+
+    async with Client(build_server()) as c:
+        result = await c.call_tool("txn_get_transactions", {"limit": 2.0})
+    assert len(result.structured_content["transactions"]) == 2
+
+
+async def test_bad_date_filter_fails_before_any_request(
+    fake_env: None, patched_client: MagicMock
+) -> None:
+    from nz_openbank_mcp.tools.transactions import search_transactions
+
+    with pytest.raises(ValueError, match="YYYY-MM-DD"):
+        await search_transactions(query="x", start_date="2026-01-01", end_date="yesterday")
+    patched_client.iter_transactions.assert_not_called()
+    patched_client.list_accounts.assert_not_called()

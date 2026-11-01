@@ -241,7 +241,8 @@ covers that whole NZ day, at either end of a range; a full ISO 8601 timestamp
 is passed to Akahu unchanged, and Akahu reads one without an offset as UTC.
 Amounts are formatted in each account's currency, so a USD account shows
 `-USD 9.99`. When an account's currency is unknown, `currency` is `null` and
-the amount is a bare number.
+`amount` has no currency symbol (for example `-1,234.50`); `amount_raw` is
+always the plain number. Other date formats are rejected.
 
 ## Privacy
 

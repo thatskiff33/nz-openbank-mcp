@@ -91,13 +91,20 @@ def akahu_bound(value: str | None, *, end: bool) -> str | None:
 
     A bare YYYY-MM-DD is an NZ calendar day, inclusive at both ends. Akahu's
     `start` is exclusive and `end` inclusive, so both become the instant just
-    before the relevant NZ midnight, in UTC. Blank means no bound. Anything
-    else passes through; Akahu reads a timestamp without an offset as UTC.
+    before the relevant NZ midnight, in UTC. Blank means no bound. An ISO 8601
+    timestamp passes through; Akahu reads one without an offset as UTC.
+    Anything else raises ValueError before a request is made.
     """
     text = (value or "").strip()
     if not text:
         return None
     if not _DATE_ONLY_RE.match(text):
+        try:
+            parse_iso_date(text)
+        except ValueError:
+            raise ValueError(
+                f"date filter {text!r} must be YYYY-MM-DD or an ISO 8601 timestamp"
+            ) from None
         return text
     day = date.fromisoformat(text)
     if end:

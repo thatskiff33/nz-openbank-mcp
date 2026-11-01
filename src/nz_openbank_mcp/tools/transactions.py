@@ -6,7 +6,7 @@ from datetime import timedelta
 from typing import Annotated, Any, Literal
 
 from fastmcp import Context, FastMCP
-from pydantic import Field
+from pydantic import BeforeValidator, Field
 
 from nz_openbank_mcp import deps
 from nz_openbank_mcp.aio import pair
@@ -26,7 +26,16 @@ from nz_openbank_mcp.tool_metadata import (
 server: FastMCP[Any] = FastMCP("transactions")
 
 IssueType = Literal["DUPLICATE", "ENRICHMENT_ERROR", "ENRICHMENT_SUGGESTION"]
-Limit = Annotated[int, Field(ge=1, le=500, strict=True)]
+
+
+def _integral(value: object) -> object:
+    # Some MCP hosts send JSON whole numbers as floats (100.0).
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    return value
+
+
+Limit = Annotated[int, BeforeValidator(_integral), Field(ge=1, le=500, strict=True)]
 
 SEARCH_DEFAULT_DAYS = 90
 
@@ -88,9 +97,9 @@ async def get_transactions(
     Returns {"transactions": [...]} where each entry has id, account_id,
     date (YYYY-MM-DD, NZ calendar day), description, amount (formatted in the
     account's currency, e.g. "-$12.50" or "-USD 9.99"), amount_raw (float;
-    negative = debit), currency (ISO code, or None with a bare-number amount
-    when the account's currency is unknown), type, merchant (str | None),
-    category (str | None).
+    negative = debit), currency (ISO code, or None when the account's
+    currency is unknown, in which case amount has no symbol, e.g.
+    "-1,234.50"), type, merchant (str | None), category (str | None).
 
     Args:
         account_id: Scope to one account (sent to Akahu).
@@ -105,9 +114,9 @@ async def get_transactions(
         max_amount: Upper bound on signed amount (applied after fetching).
         limit: Max items returned, 1 to 500 (default 100).
     """
-    client = deps.get_client()
     start = akahu_bound(start_date, end=False)
     end = akahu_bound(end_date, end=True)
+    client = deps.get_client()
     currencies = await _currencies(client)
     if account_id is not None:
         iterator = client.iter_account_transactions(account_id, start=start, end=end)
@@ -186,10 +195,9 @@ async def search_transactions(
 
     Searches settled transactions in a date window until `limit` matches are
     found. Without start_date the window is the 90 NZ days ending on end_date,
-    or ending today. Use for free-text
-    lookups; prefer get_transactions when filtering by account or amount.
-    Returns {"transactions": [...]} with the same per-entry shape as
-    get_transactions.
+    or ending today. Use for free-text lookups; prefer get_transactions when
+    filtering by account or amount. Returns {"transactions": [...]} with the
+    same per-entry shape as get_transactions.
 
     Args:
         query: Substring to match (case-insensitive).
@@ -199,16 +207,17 @@ async def search_transactions(
             timestamp (UTC if it has no offset); defaults to no upper bound.
         limit: Max matches returned, 1 to 500 (default 50).
     """
-    if not (start_date or "").strip():
-        last_day = nz_day(end_date) if end_date and end_date.strip() else nz_today()
-        start_date = (last_day - timedelta(days=SEARCH_DEFAULT_DAYS - 1)).isoformat()
+    end = akahu_bound(end_date, end=True)
+    start = akahu_bound(start_date, end=False)
+    if start is None:
+        last_day = nz_day(end_date or "") if end else nz_today()
+        first_day = last_day - timedelta(days=SEARCH_DEFAULT_DAYS - 1)
+        start = akahu_bound(first_day.isoformat(), end=False)
     client = deps.get_client()
     currencies = await _currencies(client)
     needle = query.lower()
     matches: list[Transaction] = []
-    iterator = client.iter_transactions(
-        start=akahu_bound(start_date, end=False), end=akahu_bound(end_date, end=True)
-    )
+    iterator = client.iter_transactions(start=start, end=end)
     async for txn in iterator:
         haystack = txn.description.lower()
         if txn.merchant:

@@ -117,10 +117,21 @@ def test_mask_account_fails_closed_on_other_formats(raw: str, masked: str) -> No
         (datetime(2026, 6, 17, 12, 0), "2026-06-18"),  # naive is UTC, not NZ local
     ],
 )
-def test_local_date_uses_nz_calendar(stamp: datetime, expected: str) -> None:
+def test_local_date_uses_nz_calendar(
+    stamp: datetime, expected: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import time
+
     from nz_openbank_mcp.formatting import local_date
 
-    assert local_date(stamp) == expected
+    # A machine clock east of UTC exposes any use of system local time.
+    monkeypatch.setenv("TZ", "Asia/Tokyo")
+    time.tzset()
+    try:
+        assert local_date(stamp) == expected
+    finally:
+        monkeypatch.undo()
+        time.tzset()
 
 
 @pytest.mark.parametrize(
@@ -151,6 +162,14 @@ def test_akahu_bound_rejects_impossible_date() -> None:
 
     with pytest.raises(ValueError, match="day"):
         akahu_bound("2026-02-30", end=False)
+
+
+@pytest.mark.parametrize("bad", ["2026-5-1", "yesterday", "31/12/2025"])
+def test_akahu_bound_rejects_other_formats(bad: str) -> None:
+    from nz_openbank_mcp.formatting import akahu_bound
+
+    with pytest.raises(ValueError, match="YYYY-MM-DD or an ISO 8601"):
+        akahu_bound(bad, end=True)
 
 
 def test_nz_today_uses_nz_clock(monkeypatch: pytest.MonkeyPatch) -> None:
