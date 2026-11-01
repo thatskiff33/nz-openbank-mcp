@@ -8,6 +8,11 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 - The FastMCP startup banner is no longer printed by either entrypoint.
 - The Cursor agents OAuth callback is in the default HTTP redirect allowlist.
+- Container image on GHCR (`ghcr.io/thatskiff33/nz-openbank-mcp`) for amd64 and arm64, read-only by default, with build provenance.
+- Release files carry GitHub build provenance; verify with `gh attestation verify`.
+- CI runs on Linux, macOS and Windows, plus OpenSSF Scorecard and CodeQL.
+- Added a threat model, privacy policy, code of conduct and support guide.
+- Plugin and extension manifests gain icons, a tool list, privacy and support links, and the Finance category.
 
 ## 0.1.4 - 2026-11-01
 

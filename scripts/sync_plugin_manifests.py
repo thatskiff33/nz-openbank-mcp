@@ -137,12 +137,16 @@ def codex_plugin(base: dict[str, Any]) -> dict[str, Any]:
         "mcpServers": f"./{CODEX_MCP}",
         "interface": {
             "displayName": base["display_name"],
-            "shortDescription": base["short_description"],
-            "longDescription": base["description"],
+            "shortDescription": base["codex_short_description"],
+            "longDescription": base["long_description"],
             "developerName": base["author"]["name"],
             "category": base["category"],
             "capabilities": ["Read", "Write"],
             "websiteURL": base["homepage"],
+            "privacyPolicyURL": base["privacy_policies"][0],
+            "supportURL": base["support"],
+            "logo": f"./{base['logo']}",
+            "composerIcon": f"./{base['logo']}",
         },
     }
 
@@ -188,6 +192,7 @@ def cursor_plugin(base: dict[str, Any]) -> dict[str, Any]:
         "license": base["license"],
         "keywords": base["keywords"],
         "category": base["category"].lower(),
+        "logo": base["logo"],
         "variables": {
             "type": "object",
             "properties": properties,
@@ -244,7 +249,7 @@ def grok_marketplace(base: dict[str, Any]) -> dict[str, Any]:
                 "name": base["name"],
                 "description": base["description"],
                 "version": base["version"],
-                "category": base["category"].lower(),
+                "category": base["grok_category"],
                 "source": {"type": "local", "path": f"./{PLUGIN_DIR}"},
             }
         ],
@@ -258,8 +263,12 @@ def mcpb_manifest(base: dict[str, Any]) -> dict[str, Any]:
         "display_name": base["display_name"],
         "version": base["version"],
         "description": base["description"],
+        "long_description": base["long_description"],
         "author": author(base, url=True),
         "homepage": base["homepage"],
+        "documentation": base["documentation"],
+        "support": base["support"],
+        "icon": "icon.png",
         "repository": {"type": "git", "url": base["repository"]},
         "license": base["license"],
         "keywords": base["keywords"],
@@ -268,7 +277,10 @@ def mcpb_manifest(base: dict[str, Any]) -> dict[str, Any]:
             "entry_point": "nz_openbank_mcp.server",
             "mcp_config": {**launch(base), "env": user_config_env(base)},
         },
+        "tools": [{"name": t["name"], "description": t["description"]} for t in base["tool"]],
+        "tools_generated": False,
         "user_config": user_config(base, required=True),
+        "privacy_policies": base["privacy_policies"],
         "compatibility": {"platforms": ["darwin", "win32", "linux"]},
     }
 

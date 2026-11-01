@@ -14,7 +14,18 @@ homepage = "https://github.com/thatskiff33/nz-openbank-mcp"
 repository = "https://github.com/thatskiff33/nz-openbank-mcp"
 license = "Apache-2.0"
 keywords = ["mcp", "akahu", "open-finance", "new-zealand", "banking"]
-category = "Productivity"
+long_description = "Ask your AI assistant about your New Zealand bank accounts through Akahu open finance, using a Personal App you control. Runs locally over stdio, starts read-only, and asks before every write. Unofficial; not affiliated with Akahu or any bank."
+codex_short_description = "NZ bank accounts via Akahu"
+documentation = "https://github.com/thatskiff33/nz-openbank-mcp#readme"
+support = "https://github.com/thatskiff33/nz-openbank-mcp/issues"
+privacy_policies = [
+  "https://github.com/thatskiff33/nz-openbank-mcp/blob/main/PRIVACY.md",
+  "https://www.akahu.nz/privacy-notice",
+]
+# Relative to plugin/; the Desktop Extension ships its own copy as mcpb/icon.png.
+logo = "assets/logo.png"
+category = "Finance"
+grok_category = "productivity"
 
 # MCP Registry entry (server.json). The name must stay under io.github.<owner>/
 # and match the `mcp-name:` line in README.md, which PyPI publishes.
@@ -64,3 +75,62 @@ key = "akahu_automation_bypass"
 title = "Automation bypass"
 description = "Skip per-call consent prompts for safe-to-automate writes (account refresh only). Requires read-only=false."
 default = "false"
+
+# Tool list shown by hosts before install. tests/test_manifests.py checks it
+# against the server's tools.
+
+[[tool]]
+name = "acct_list_accounts"
+description = "Every connected account, with masked numbers and balances"
+
+[[tool]]
+name = "acct_get_account"
+description = "One account by id"
+
+[[tool]]
+name = "acct_get_account_balance"
+description = "Just the balance of one account"
+
+[[tool]]
+name = "acct_get_pending_transactions"
+description = "Unsettled transactions for one account"
+
+[[tool]]
+name = "acct_refresh_all_accounts"
+description = "Ask Akahu to fetch fresh data for every account (write)"
+
+[[tool]]
+name = "acct_refresh_account"
+description = "Ask Akahu to fetch fresh data for one account (write)"
+
+[[tool]]
+name = "txn_get_transactions"
+description = "Settled transactions filtered by account, dates, category or amount"
+
+[[tool]]
+name = "txn_get_transaction"
+description = "One transaction by id"
+
+[[tool]]
+name = "txn_get_transactions_by_ids"
+description = "Several transactions in one request"
+
+[[tool]]
+name = "txn_get_pending_transactions"
+description = "Unsettled transactions across all accounts"
+
+[[tool]]
+name = "txn_search_transactions"
+description = "Text search over description and merchant"
+
+[[tool]]
+name = "txn_report_transaction_issue"
+description = "Open a support ticket with Akahu about a transaction (write)"
+
+[[tool]]
+name = "id_get_me"
+description = "The Akahu user's profile"
+
+[[tool]]
+name = "id_verify_name"
+description = "Check a name against the account holder (write, extra scope)"

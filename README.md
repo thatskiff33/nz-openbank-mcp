@@ -339,6 +339,10 @@ rejected.
   applied after the data arrives. Personal Apps have no finer-grained access
   control, so the token can read everything you connected.
 
+The [privacy policy](https://github.com/thatskiff33/nz-openbank-mcp/blob/main/PRIVACY.md) covers who sees what, and the
+[threat model](https://github.com/thatskiff33/nz-openbank-mcp/blob/main/docs/threat-model.md) lists each risk with its mitigation
+and the risks that remain.
+
 Release files (wheel, sdist and `.mcpb`) carry GitHub build provenance, and
 PyPI uploads come from Trusted Publishing. To check a download:
 

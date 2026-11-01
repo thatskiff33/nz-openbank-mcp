@@ -20,14 +20,18 @@
   "mcpServers": "./codex-mcp.json",
   "interface": {
     "displayName": "NZ Akahu MCP",
-    "shortDescription": "Akahu open finance (NZ): accounts, transactions, identity",
-    "longDescription": "Unofficial MCP server for the Akahu open-finance API (NZ). 14 tools, read-only by default, runs locally over stdio.",
+    "shortDescription": "NZ bank accounts via Akahu",
+    "longDescription": "Ask your AI assistant about your New Zealand bank accounts through Akahu open finance, using a Personal App you control. Runs locally over stdio, starts read-only, and asks before every write. Unofficial; not affiliated with Akahu or any bank.",
     "developerName": "thatskiff33",
-    "category": "Productivity",
+    "category": "Finance",
     "capabilities": [
       "Read",
       "Write"
     ],
-    "websiteURL": "https://github.com/thatskiff33/nz-openbank-mcp"
+    "websiteURL": "https://github.com/thatskiff33/nz-openbank-mcp",
+    "privacyPolicyURL": "https://github.com/thatskiff33/nz-openbank-mcp/blob/main/PRIVACY.md",
+    "supportURL": "https://github.com/thatskiff33/nz-openbank-mcp/issues",
+    "logo": "./assets/logo.png",
+    "composerIcon": "./assets/logo.png"
   }
 }

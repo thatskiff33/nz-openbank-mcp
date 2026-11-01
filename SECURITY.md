@@ -23,6 +23,9 @@ Upgrade before reporting if you are on an older version.
 
 ## Security model
 
+The [threat model](https://github.com/thatskiff33/nz-openbank-mcp/blob/main/docs/threat-model.md) covers assets, trust
+boundaries, mitigations and residual risks in detail.
+
 - **Read-only by default.** `AKAHU_READ_ONLY=true` makes every write tool refuse
   before any network call.
 - **Consent-gated writes.** With writes enabled, each write asks the user to

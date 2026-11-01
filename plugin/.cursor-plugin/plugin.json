@@ -16,7 +16,8 @@
     "new-zealand",
     "banking"
   ],
-  "category": "productivity",
+  "category": "finance",
+  "logo": "assets/logo.png",
   "variables": {
     "type": "object",
     "properties": {
