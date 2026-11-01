@@ -17,10 +17,10 @@ from urllib.parse import unquote
 
 ROOT = Path(__file__).resolve().parent.parent
 INLINE = re.compile(r"\]\(\s*(<[^>]*>|[^)\s]+)")
-REFERENCE_DEF = re.compile(r"^\s{0,3}\[[^\]]+\]:\s*(<[^>]*>|\S+)")
+REFERENCE_DEF = re.compile(r"^\s{0,3}\[(?!\^)[^\]]+\]:\s*(<[^>]*>|\S+)")
 HTML_ATTR = re.compile(r"""\b(?:href|src)\s*=\s*["']([^"']+)["']""", re.IGNORECASE)
 CODE_SPAN = re.compile(r"(`+).*?\1")
-FENCE = re.compile(r"^\s{0,3}(`{3,}|~{3,})")
+FENCE = re.compile(r"^\s{0,3}(`{3,}|~{3,})(.*)$")
 SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
 
 
@@ -46,10 +46,11 @@ def broken_links(path: Path) -> list[str]:
     for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
         opener = FENCE.match(line)
         if opener:
-            marker = opener.group(1)
+            marker, rest = opener.group(1), opener.group(2).strip()
             if fence is None:
                 fence = marker
-            elif marker[0] == fence[0] and len(marker) >= len(fence):
+                continue
+            if marker[0] == fence[0] and len(marker) >= len(fence) and not rest:
                 fence = None
             continue
         if fence is not None:

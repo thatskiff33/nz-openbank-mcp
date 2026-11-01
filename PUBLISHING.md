@@ -82,7 +82,8 @@ The Release event triggers the workflow:
 
 - `ci-gate`: requires the tagged commit to be on `main` and to have a
   successful `ci.yml` push run there (waits up to about 25 minutes if that run
-  is still in progress)
+  is still in progress). Tag the head commit of a squash merge; a commit whose
+  push run was skipped cannot be released
 - `build`: `uv build` produces sdist + wheel; asserts pyproject version == tag
 - `build-mcpb`: `npx -y @anthropic-ai/mcpb@<pinned> pack mcpb` produces
   `dist/nz-openbank-mcp-X.Y.Z.mcpb`; asserts manifest version == tag

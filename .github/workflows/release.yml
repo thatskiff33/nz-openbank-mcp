@@ -56,8 +56,12 @@ jobs:
             success=$(jq '[.workflow_runs[] | select(.conclusion == "success")] | length' <<<"$runs")
             pending=$(jq '[.workflow_runs[] | select(.status != "completed")] | length' <<<"$runs")
             echo "attempt $attempt: successful=$success in-progress=$pending"
+            total=$(jq '.workflow_runs | length' <<<"$runs")
             if [ "$success" -gt 0 ]; then exit 0; fi
-            if [ "$pending" -eq 0 ]; then break; fi
+            # The push run can take a short while to appear after a merge.
+            if [ "$pending" -eq 0 ] && { [ "$total" -gt 0 ] || [ "$attempt" -ge 6 ]; }; then
+              break
+            fi
             sleep 30
           done
           echo "Release blocked: no successful ci.yml push run on main for $SHA."
