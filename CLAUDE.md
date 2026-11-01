@@ -27,7 +27,7 @@ uv export --frozen --no-emit-project --all-extras --format requirements-txt \
   | uv run pip-audit --strict --disable-pip --require-hashes -r /dev/stdin  # audit the lock
 uv build                               # sdist + wheel into dist/
 uv run nz-openbank-mcp                    # run server over stdio from local checkout
-uv run fastmcp dev src/nz_openbank_mcp/server.py  # FastMCP inspector
+FASTMCP_ENV_FILE=/dev/null uv run fastmcp dev src/nz_openbank_mcp/server.py  # FastMCP inspector
 ```
 
 The pytest config (`pyproject.toml [tool.pytest.ini_options]`) enforces

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 
 import httpx
@@ -76,6 +77,7 @@ def test_explicit_env_file_is_loaded(
 ) -> None:
     env_file = tmp_path / "server.env"
     env_file.write_text("AKAHU_READ_ONLY=false\nAKAHU_LOG_LEVEL=debug\n")
+    env_file.chmod(0o600)
     monkeypatch.delenv("AKAHU_LOG_LEVEL")
     monkeypatch.setenv("AKAHU_ENV_FILE", str(env_file))
 
@@ -90,6 +92,7 @@ def test_process_environment_wins_over_env_file(
 ) -> None:
     env_file = tmp_path / "server.env"
     env_file.write_text("AKAHU_APP_TOKEN=file_app_token\n")
+    env_file.chmod(0o600)
     monkeypatch.setenv("AKAHU_ENV_FILE", str(env_file))
 
     assert AkahuConfig().app_token.get_secret_value() == "app_token_test"
@@ -100,6 +103,7 @@ def test_env_file_cannot_opt_in_to_custom_base_url(
 ) -> None:
     env_file = tmp_path / "server.env"
     env_file.write_text(HOSTILE_DOTENV)
+    env_file.chmod(0o600)
     monkeypatch.setenv("AKAHU_ENV_FILE", str(env_file))
 
     with pytest.raises(ValidationError, match="base_url must be on https://api.akahu.io"):
@@ -138,6 +142,7 @@ def test_env_file_applies_to_http_and_oauth_settings(
         "NZ_OPENBANK_MCP_PUBLIC_BASE_URL=https://mcp.example.com/openbank-mcp\n"
         "NZ_OPENBANK_MCP_ALLOWED_USERS=owner@example.com\n"
     )
+    env_file.chmod(0o600)
     monkeypatch.setenv("AKAHU_ENV_FILE", str(env_file))
 
     http = McpHttpConfig()
@@ -268,10 +273,10 @@ def test_short_bearer_token_allowed_in_oauth_mode(
 async def test_bearer_provider_compares_bytes() -> None:
     from nz_openbank_mcp.http_auth import StaticBearerAuthProvider
 
-    provider = StaticBearerAuthProvider(SecretStr("tök_" + "a" * 32))
+    provider = StaticBearerAuthProvider(SecretStr("tok_" + "a" * 32))
 
-    assert await provider.verify_token("tök_" + "a" * 32) is not None
-    assert await provider.verify_token("tok_" + "a" * 32) is None
+    assert await provider.verify_token("tok_" + "a" * 32) is not None
+    assert await provider.verify_token("tök_" + "a" * 32) is None
     assert await provider.verify_token("ünïcödé") is None
     assert await provider.verify_token("\udcff") is None
 
@@ -322,7 +327,6 @@ def test_validation_errors_do_not_echo_tokens(
 
 
 def test_fastmcp_settings_ignore_working_directory_dotenv(tmp_path: Path) -> None:
-    import os
     import subprocess
     import sys
 
@@ -342,6 +346,7 @@ def test_fastmcp_settings_ignore_working_directory_dotenv(tmp_path: Path) -> Non
     assert out.stdout.strip() == "INFO"
 
 
+@pytest.mark.skipif(os.name != "posix", reason="POSIX file modes")
 def test_env_file_writable_by_others_is_refused(
     fake_env: None, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -452,3 +457,20 @@ def test_banner_warns_when_base_url_is_custom(
     warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
     assert any("akahu-mock.example" in r.getMessage() for r in warnings)
     assert "app_token_test" not in caplog.text
+
+
+@pytest.mark.skipif(os.name != "posix" or os.geteuid() == 0, reason="needs a non-root POSIX user")
+def test_env_file_owned_by_another_user_is_refused(
+    fake_env: None, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import nz_openbank_mcp.config as config
+
+    env_file = tmp_path / "server.env"
+    env_file.write_text("AKAHU_READ_ONLY=false\n")
+    env_file.chmod(0o600)
+    monkeypatch.setenv("AKAHU_ENV_FILE", str(env_file))
+    owner = env_file.stat().st_uid
+    monkeypatch.setattr(config.os, "getuid", lambda: owner + 1)
+
+    with pytest.raises(ValueError, match="owned by root or the current user"):
+        config.explicit_env_file()

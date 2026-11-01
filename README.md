@@ -193,10 +193,12 @@ uv run nz-openbank-mcp
 ```
 
 The server reads configuration from its process environment only. It never
-loads a `.env` file from the working directory (this includes FastMCP's own
-`FASTMCP_*` settings, unless `FASTMCP_ENV_FILE` is set). To use an env file (see
+loads a `.env` file from the working directory. When started through the
+`nz-openbank-mcp` console scripts this also covers FastMCP's own `FASTMCP_*`
+settings; the `fastmcp` CLI loads them before the package, so prefix it with
+`FASTMCP_ENV_FILE=/dev/null` as shown below. To use an env file (see
 `.env.example`), pass its absolute path; on Linux and macOS the file must not be
-writable by group or others:
+writable by group or others and must be owned by you or root:
 
 ```bash
 AKAHU_ENV_FILE=/abs/path/to/nz-openbank.env uv run nz-openbank-mcp
@@ -212,7 +214,7 @@ repository you cloned.
 The server speaks MCP over stdio. Inspect tool calls with:
 
 ```bash
-uv run fastmcp dev src/nz_openbank_mcp/server.py
+FASTMCP_ENV_FILE=/dev/null uv run fastmcp dev src/nz_openbank_mcp/server.py
 ```
 
 An authenticated Streamable HTTP entrypoint exists for explicitly secured

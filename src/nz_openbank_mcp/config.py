@@ -45,8 +45,12 @@ def explicit_env_file() -> Path | None:
         raise ValueError(f"{ENV_FILE_VAR} must be an absolute path")
     if not path.is_file():
         raise ValueError(f"{ENV_FILE_VAR} does not name a file: {path}")
-    if _POSIX and path.stat().st_mode & 0o022:
-        raise ValueError(f"{ENV_FILE_VAR} must not be writable by group or others: {path}")
+    if _POSIX:
+        st = path.stat()
+        if st.st_mode & 0o022:
+            raise ValueError(f"{ENV_FILE_VAR} must not be writable by group or others: {path}")
+        if st.st_uid not in (0, os.getuid()):
+            raise ValueError(f"{ENV_FILE_VAR} must be owned by root or the current user: {path}")
     return path
 
 
