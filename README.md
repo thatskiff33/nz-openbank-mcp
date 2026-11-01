@@ -278,6 +278,9 @@ in [`docs/`](https://github.com/thatskiff33/nz-openbank-mcp/tree/main/docs).
 ## License and disclaimer
 
 Licensed under Apache-2.0; see [`LICENSE`](https://github.com/thatskiff33/nz-openbank-mcp/blob/main/LICENSE).
+Derived from [nz-akahu-mcp](https://github.com/severity1/nz-akahu-mcp) by
+severity1 (Apache-2.0) and substantially modified; see
+[`NOTICE`](https://github.com/thatskiff33/nz-openbank-mcp/blob/main/NOTICE).
 
 This software is provided as is. You are responsible for how you use it with
 your financial data. The maintainers accept no liability for data loss,
