@@ -39,6 +39,8 @@ DEFAULT_ALLOWED_REDIRECT_URIS = (
     "https://claude.ai/api/mcp/auth_callback",
     "https://claude.com/api/mcp/auth_callback",
     "https://chatgpt.com/connector_platform_oauth_redirect",
+    "https://cursor.com/agents/mcp/oauth/callback",
+    "https://www.cursor.com/agents/mcp/oauth/callback",
     "http://localhost:*",
     "http://127.0.0.1:*",
 )

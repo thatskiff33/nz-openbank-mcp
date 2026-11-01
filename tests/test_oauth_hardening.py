@@ -142,6 +142,7 @@ def test_unlisted_redirect_uri_is_rejected_at_registration(
     [
         "https://claude.ai/api/mcp/auth_callback",
         "https://chatgpt.com/connector_platform_oauth_redirect",
+        "https://www.cursor.com/agents/mcp/oauth/callback",
         "http://localhost:3118/callback",
         "http://127.0.0.1:50123/callback",
     ],
