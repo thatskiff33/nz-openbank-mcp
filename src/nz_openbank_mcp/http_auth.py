@@ -14,6 +14,7 @@ from key_value.aio.protocols import AsyncKeyValue
 from mcp.server.auth.provider import AccessToken as McpAccessToken
 from mcp.server.auth.provider import AuthorizationCode, TokenError
 from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
+from pydantic import SecretStr
 from starlette.routing import Route
 
 GOOGLE_OAUTH_SCOPES = ["openid", "email", "profile"]
@@ -22,13 +23,17 @@ GOOGLE_OAUTH_SCOPES = ["openid", "email", "profile"]
 class StaticBearerAuthProvider(AuthProvider):
     """Authenticate HTTP MCP requests against one configured bearer token."""
 
-    def __init__(self, bearer_token: str) -> None:
+    def __init__(self, bearer_token: SecretStr) -> None:
         super().__init__()
-        self._bearer_token = bearer_token
+        self._expected = bearer_token.get_secret_value().encode("utf-8")
 
     async def verify_token(self, token: str) -> FastMCPAccessToken | None:
-        """Return access metadata only when the supplied bearer token matches."""
-        if hmac.compare_digest(token, self._bearer_token):
+        """Return access metadata only when the supplied bearer token matches.
+
+        Compares UTF-8 bytes: hmac.compare_digest raises on non-ASCII str.
+        """
+        supplied = token.encode("utf-8", errors="surrogatepass")
+        if hmac.compare_digest(supplied, self._expected):
             return FastMCPAccessToken(
                 token=token,
                 client_id="nz-openbank-mcp-http",

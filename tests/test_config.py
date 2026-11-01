@@ -7,6 +7,8 @@ from collections.abc import Iterator
 import pytest
 from pydantic import ValidationError
 
+BEARER = "http_token_test_0123456789abcdef0123"
+
 OAUTH_ENV_VARS = (
     "NZ_OPENBANK_MCP_GOOGLE_CLIENT_ID",
     "OPENBANK_MCP_GOOGLE_CLIENT_ID",
@@ -33,8 +35,8 @@ def test_loads_from_env(fake_env: None) -> None:
     from nz_openbank_mcp.config import AkahuConfig
 
     cfg = AkahuConfig()
-    assert cfg.app_token == "app_token_test"
-    assert cfg.user_token == "user_token_test"
+    assert cfg.app_token.get_secret_value() == "app_token_test"
+    assert cfg.user_token.get_secret_value() == "user_token_test"
     assert cfg.base_url == "https://api.akahu.io/v1"
     assert cfg.read_only is True
     assert cfg.automation_bypass is False
@@ -133,14 +135,14 @@ def test_bypass_env_loads(bypass_env: None) -> None:
 def test_http_config_loads_nz_prefixed_env(monkeypatch: pytest.MonkeyPatch, fake_env: None) -> None:
     from nz_openbank_mcp.config import McpHttpConfig
 
-    monkeypatch.setenv("NZ_OPENBANK_MCP_BEARER_TOKEN", "http_token_test")
+    monkeypatch.setenv("NZ_OPENBANK_MCP_BEARER_TOKEN", BEARER)
     monkeypatch.setenv("NZ_OPENBANK_MCP_HTTP_HOST", "127.0.0.1")
     monkeypatch.setenv("NZ_OPENBANK_MCP_HTTP_PORT", "8091")
     monkeypatch.setenv("NZ_OPENBANK_MCP_HTTP_PATH", "/mcp")
 
     cfg = McpHttpConfig()
     assert cfg.auth_mode == "bearer"
-    assert cfg.bearer_token == "http_token_test"
+    assert cfg.bearer_token.get_secret_value() == BEARER
     assert cfg.host == "127.0.0.1"
     assert cfg.port == 8091
     assert cfg.path == "/mcp"
@@ -152,9 +154,9 @@ def test_http_config_loads_akahu_prefixed_bearer_alias(
     from nz_openbank_mcp.config import McpHttpConfig
 
     monkeypatch.delenv("NZ_OPENBANK_MCP_BEARER_TOKEN", raising=False)
-    monkeypatch.setenv("OPENBANK_MCP_BEARER_TOKEN", "http_token_test")
+    monkeypatch.setenv("OPENBANK_MCP_BEARER_TOKEN", BEARER)
 
-    assert McpHttpConfig().bearer_token == "http_token_test"
+    assert McpHttpConfig().bearer_token.get_secret_value() == BEARER
 
 
 def test_http_config_oauth_mode_does_not_require_bearer(
@@ -168,7 +170,7 @@ def test_http_config_oauth_mode_does_not_require_bearer(
 
     cfg = McpHttpConfig()
     assert cfg.auth_mode == "oauth"
-    assert cfg.bearer_token == ""
+    assert cfg.bearer_token.get_secret_value() == ""
 
 
 def test_http_config_ignores_unprefixed_process_path(
@@ -202,7 +204,7 @@ def test_http_config_requires_bearer_token(monkeypatch: pytest.MonkeyPatch, fake
 def test_http_config_rejects_relative_path(monkeypatch: pytest.MonkeyPatch, fake_env: None) -> None:
     from nz_openbank_mcp.config import McpHttpConfig
 
-    monkeypatch.setenv("NZ_OPENBANK_MCP_BEARER_TOKEN", "http_token_test")
+    monkeypatch.setenv("NZ_OPENBANK_MCP_BEARER_TOKEN", BEARER)
     monkeypatch.setenv("NZ_OPENBANK_MCP_HTTP_PATH", "mcp")
 
     with pytest.raises(ValidationError, match="http path"):

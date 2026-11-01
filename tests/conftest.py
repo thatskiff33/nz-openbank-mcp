@@ -23,6 +23,8 @@ def load_fixture(name: str) -> dict[str, Any]:
 @pytest.fixture
 def fake_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Set known-good Akahu env vars for the duration of a test."""
+    monkeypatch.delenv("AKAHU_ENV_FILE", raising=False)
+    monkeypatch.delenv("AKAHU_ALLOW_CUSTOM_BASE_URL", raising=False)
     monkeypatch.setenv("AKAHU_APP_TOKEN", "app_token_test")
     monkeypatch.setenv("AKAHU_USER_TOKEN", "user_token_test")
     monkeypatch.setenv("AKAHU_BASE_URL", "https://api.akahu.io/v1")

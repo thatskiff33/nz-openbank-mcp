@@ -8,7 +8,10 @@ from typing import Any
 import pytest
 from fastmcp.server.auth import AccessToken
 from key_value.aio.stores.memory import MemoryStore
+from pydantic import SecretStr
 from starlette.testclient import TestClient
+
+BEARER = "http_token_test_0123456789abcdef0123"
 
 
 def _oauth_config() -> Any:
@@ -105,7 +108,7 @@ async def test_http_server_exposes_all_14_tools_with_auth(fake_env: None) -> Non
     from nz_openbank_mcp.http_auth import StaticBearerAuthProvider
     from nz_openbank_mcp.server import build_http_server
 
-    mcp = build_http_server(McpHttpConfig(bearer_token="http_token_test"))
+    mcp = build_http_server(McpHttpConfig(bearer_token=SecretStr(BEARER)))
     tools = await mcp.list_tools()
     assert len(tools) == 14
     assert isinstance(mcp.auth, StaticBearerAuthProvider)
@@ -153,10 +156,10 @@ def test_http_server_oauth_mode_loads_oauth_env(
 async def test_http_bearer_auth_provider_accepts_only_expected_token() -> None:
     from nz_openbank_mcp.http_auth import StaticBearerAuthProvider
 
-    provider = StaticBearerAuthProvider("http_token_test")
+    provider = StaticBearerAuthProvider(SecretStr(BEARER))
     assert await provider.verify_token("wrong_token") is None
 
-    access = await provider.verify_token("http_token_test")
+    access = await provider.verify_token(BEARER)
     assert access is not None
     assert access.client_id == "nz-openbank-mcp-http"
     assert access.scopes == []
@@ -336,7 +339,7 @@ def test_http_app_rejects_missing_bearer(fake_env: None) -> None:
     from nz_openbank_mcp.config import McpHttpConfig
     from nz_openbank_mcp.server import build_http_server
 
-    cfg = McpHttpConfig(bearer_token="http_token_test")
+    cfg = McpHttpConfig(bearer_token=SecretStr(BEARER))
     app = build_http_server(cfg).http_app(
         path=cfg.path,
         transport="streamable-http",
@@ -522,7 +525,7 @@ def test_http_main_constructs_and_runs(fake_env: None, monkeypatch: pytest.Monke
     """http_main() must build the auth server and use Streamable HTTP."""
     from nz_openbank_mcp import server
 
-    monkeypatch.setenv("NZ_OPENBANK_MCP_BEARER_TOKEN", "http_token_test")
+    monkeypatch.setenv("NZ_OPENBANK_MCP_BEARER_TOKEN", BEARER)
     monkeypatch.setenv("NZ_OPENBANK_MCP_HTTP_HOST", "127.0.0.1")
     monkeypatch.setenv("NZ_OPENBANK_MCP_HTTP_PORT", "8091")
     monkeypatch.setenv("NZ_OPENBANK_MCP_HTTP_PATH", "/mcp")

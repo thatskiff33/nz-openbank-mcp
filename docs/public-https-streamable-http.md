@@ -62,7 +62,7 @@ Bearer mode remains available for approved clients that cannot use OAuth:
 AKAHU_READ_ONLY=true
 AKAHU_AUTOMATION_BYPASS=false
 NZ_OPENBANK_MCP_AUTH_MODE=bearer
-NZ_OPENBANK_MCP_BEARER_TOKEN=REPLACE_WITH_LONG_RANDOM_BEARER_TOKEN
+NZ_OPENBANK_MCP_BEARER_TOKEN=REPLACE_WITH_OUTPUT_OF_openssl_rand_base64_48
 NZ_OPENBANK_MCP_HTTP_HOST=127.0.0.1
 NZ_OPENBANK_MCP_HTTP_PORT=8091
 NZ_OPENBANK_MCP_HTTP_PATH=/mcp
@@ -70,7 +70,8 @@ NZ_OPENBANK_MCP_HTTP_PATH=/mcp
 
 The app also accepts `OPENBANK_MCP_BEARER_TOKEN`, `OPENBANK_MCP_HTTP_HOST`,
 `OPENBANK_MCP_HTTP_PORT`, `OPENBANK_MCP_HTTP_PATH`, and matching `OPENBANK_MCP_*` OAuth
-names, but the `NZ_AKAHU_` names are preferred.
+names, but the `NZ_OPENBANK_MCP_` names are preferred. The bearer token must be
+at least 32 characters; the server refuses to start in bearer mode otherwise.
 
 ## Google OAuth Setup
 

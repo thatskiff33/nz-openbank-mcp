@@ -3,52 +3,129 @@
 See https://developers.akahu.nz/docs/personal-apps for the dual-header auth model:
 - Authorization: Bearer <user_token>
 - X-Akahu-Id: <app_token>
+
+Settings come from process environment variables. An env file is read only when
+AKAHU_ENV_FILE names an absolute path; the working directory is never searched.
+The Akahu API host is pinned unless AKAHU_ALLOW_CUSTOM_BASE_URL=true is set in
+the process environment (an env file cannot set it).
 """
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
 from typing import Literal, Self
 from urllib.parse import urlsplit
 
 from pydantic import AliasChoices, Field, SecretStr, field_validator, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import (
+    BaseSettings,
+    DotEnvSettingsSource,
+    PydanticBaseSettingsSource,
+    SettingsConfigDict,
+)
+
+ENV_FILE_VAR = "AKAHU_ENV_FILE"
+ALLOW_CUSTOM_BASE_URL_VAR = "AKAHU_ALLOW_CUSTOM_BASE_URL"
+AKAHU_API_HOST = "api.akahu.io"
+MIN_BEARER_TOKEN_LENGTH = 32
+
+LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 
 
-class AkahuConfig(BaseSettings):
-    """All Akahu credentials and safety flags, sourced from env or .env file."""
+def explicit_env_file() -> Path | None:
+    """The env file named by AKAHU_ENV_FILE, or None when unset."""
+    raw = os.environ.get(ENV_FILE_VAR, "").strip()
+    if not raw:
+        return None
+    path = Path(raw)
+    if not path.is_absolute():
+        raise ValueError(f"{ENV_FILE_VAR} must be an absolute path")
+    if not path.is_file():
+        raise ValueError(f"{ENV_FILE_VAR} does not name a file: {path}")
+    return path
+
+
+def custom_base_url_allowed() -> bool:
+    """True only when the process environment opts in to a non-Akahu host."""
+    return os.environ.get(ALLOW_CUSTOM_BASE_URL_VAR, "").strip().lower() in {"1", "true", "yes"}
+
+
+class _Settings(BaseSettings):
+    """Process environment first, then the explicit env file if one is named."""
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        env_file = explicit_env_file()
+        if env_file is None:
+            return (init_settings, env_settings)
+        return (
+            init_settings,
+            env_settings,
+            DotEnvSettingsSource(settings_cls, env_file=env_file, env_file_encoding="utf-8"),
+        )
+
+
+class AkahuConfig(_Settings):
+    """All Akahu credentials and safety flags."""
 
     model_config = SettingsConfigDict(
         env_prefix="AKAHU_",
-        env_file=".env",
-        env_file_encoding="utf-8",
         extra="ignore",
         case_sensitive=False,
     )
 
-    app_token: str = Field(default="", description="Akahu App Token (X-Akahu-Id header)")
-    user_token: str = Field(default="", description="Akahu User Token (Authorization Bearer)")
-    base_url: str = Field(default="https://api.akahu.io/v1")
+    app_token: SecretStr = Field(
+        default=SecretStr(""), description="Akahu App Token (X-Akahu-Id header)"
+    )
+    user_token: SecretStr = Field(
+        default=SecretStr(""), description="Akahu User Token (Authorization Bearer)"
+    )
+    base_url: str = Field(default=f"https://{AKAHU_API_HOST}/v1")
     read_only: bool = Field(default=True, description="Refuse all write tools when true")
     automation_bypass: bool = Field(
         default=False,
         description="Skip elicit() for automatable writes (only when read_only is false)",
     )
     request_timeout: int = Field(default=10, ge=1, le=120)
-    log_level: str = Field(default="INFO")
+    log_level: LogLevel = Field(default="INFO")
+
+    @field_validator("log_level", mode="before")
+    @classmethod
+    def _normalise_log_level(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.strip().upper()
+        return value
 
     @field_validator("base_url")
     @classmethod
     def _validate_base_url(cls, value: str) -> str:
-        """Require an absolute HTTPS URL without request-specific components."""
+        """Require HTTPS to the Akahu API host unless a custom host is opted in."""
         parsed = urlsplit(value)
         if parsed.scheme != "https":
             raise ValueError("base_url must use https")
-        if not parsed.netloc:
+        if not parsed.hostname:
             raise ValueError("base_url must include a host")
+        if parsed.username is not None or parsed.password is not None:
+            raise ValueError("base_url must not include credentials")
         if parsed.query:
             raise ValueError("base_url must not include a query string")
         if parsed.fragment:
             raise ValueError("base_url must not include a fragment")
+        on_akahu = parsed.hostname == AKAHU_API_HOST and parsed.port in (None, 443)
+        if not on_akahu and not custom_base_url_allowed():
+            raise ValueError(
+                f"base_url must be on https://{AKAHU_API_HOST}; set "
+                f"{ALLOW_CUSTOM_BASE_URL_VAR}=true in the process environment "
+                "to use another host"
+            )
         return value.rstrip("/")
 
     @model_validator(mode="after")
@@ -65,24 +142,22 @@ class AkahuConfig(BaseSettings):
     @property
     def is_configured(self) -> bool:
         """True iff both tokens are present (non-empty)."""
-        return bool(self.app_token) and bool(self.user_token)
+        return bool(self.app_token.get_secret_value()) and bool(self.user_token.get_secret_value())
 
     @property
     def auth_headers(self) -> dict[str, str]:
         """The two headers every Akahu request needs."""
         return {
-            "Authorization": f"Bearer {self.user_token}",
-            "X-Akahu-Id": self.app_token,
+            "Authorization": f"Bearer {self.user_token.get_secret_value()}",
+            "X-Akahu-Id": self.app_token.get_secret_value(),
         }
 
 
-class McpHttpConfig(BaseSettings):
+class McpHttpConfig(_Settings):
     """HTTP transport settings for the public HTTPS reverse-proxy deployment."""
 
     model_config = SettingsConfigDict(
         env_prefix="AKAHU_",
-        env_file=".env",
-        env_file_encoding="utf-8",
         extra="ignore",
         case_sensitive=False,
         populate_by_name=True,
@@ -96,8 +171,8 @@ class McpHttpConfig(BaseSettings):
         ),
         description="Inbound MCP auth mode for HTTP clients: bearer or oauth",
     )
-    bearer_token: str = Field(
-        default="",
+    bearer_token: SecretStr = Field(
+        default=SecretStr(""),
         validation_alias=AliasChoices(
             "NZ_OPENBANK_MCP_BEARER_TOKEN",
             "OPENBANK_MCP_BEARER_TOKEN",
@@ -136,11 +211,13 @@ class McpHttpConfig(BaseSettings):
             return value.strip().lower()
         return value
 
-    @field_validator("bearer_token")
+    @field_validator("bearer_token", mode="before")
     @classmethod
-    def _strip_bearer_token(cls, value: str) -> str:
+    def _strip_bearer_token(cls, value: object) -> object:
         """Normalize bearer token input without requiring it for OAuth mode."""
-        return value.strip()
+        if isinstance(value, str):
+            return value.strip()
+        return value
 
     @field_validator("path")
     @classmethod
@@ -152,19 +229,24 @@ class McpHttpConfig(BaseSettings):
 
     @model_validator(mode="after")
     def _require_bearer_token(self) -> Self:
-        """Require an explicit bearer token when HTTP runs in bearer mode."""
-        if self.auth_mode == "bearer" and not self.bearer_token:
+        """Require a strong bearer token when HTTP runs in bearer mode."""
+        if self.auth_mode != "bearer":
+            return self
+        token = self.bearer_token.get_secret_value()
+        if not token:
             raise ValueError("mcp bearer token is required for HTTP bearer mode")
+        if len(token) < MIN_BEARER_TOKEN_LENGTH:
+            raise ValueError(
+                f"mcp bearer token must be at least {MIN_BEARER_TOKEN_LENGTH} characters"
+            )
         return self
 
 
-class McpOAuthConfig(BaseSettings):
+class McpOAuthConfig(_Settings):
     """Google-backed OAuth proxy settings for the HTTP transport."""
 
     model_config = SettingsConfigDict(
         env_prefix="AKAHU_",
-        env_file=".env",
-        env_file_encoding="utf-8",
         extra="ignore",
         case_sensitive=False,
         populate_by_name=True,

@@ -72,7 +72,7 @@ src/nz_openbank_mcp/
 │   └── identity.py        2 tools (1 read, 1 write) under id/* namespace
 ├── client.py        AkahuClient: httpx async client + 3-attempt retry/backoff
 ├── models.py        Pydantic shapes; aliases handle Akahu's _id / _account fields
-├── config.py        AkahuConfig (pydantic-settings, env_prefix="AKAHU_")
+├── config.py        AkahuConfig (pydantic-settings, env_prefix="AKAHU_"); no implicit .env
 ├── deps.py          Process-wide AkahuClient cache (get_client / aclose_client)
 ├── safety.py        @require_write_consent decorator + 3-layer safety
 └── formatting.py    format_money, mask_account, parse_iso_date
@@ -140,6 +140,12 @@ Verify with: `uv run python -c 'import asyncio; from nz_openbank_mcp.server impo
 
 ## Akahu API constraints
 
+- **Configuration comes from the process environment.** No settings class
+  reads a working-directory `.env`; an env file loads only when
+  `AKAHU_ENV_FILE` names an absolute path. `base_url` must be on
+  `https://api.akahu.io` unless `AKAHU_ALLOW_CUSTOM_BASE_URL=true` is a real
+  environment variable (never honoured from a file). Tokens are `SecretStr`;
+  unwrap with `get_secret_value()` only where headers are built.
 - **Personal Apps only.** Akahu's Personal-Apps doc states verbatim:
   "App-scoped endpoints are not available to Personal Apps." In scope:
   `/categories`, `/categories/{id}`, `/connections`, `/connections/{id}`,

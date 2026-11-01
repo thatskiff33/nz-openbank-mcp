@@ -78,7 +78,7 @@ def log_startup_banner() -> None:
         logger.warning(
             "Automation bypass ENABLED. The following tools will skip the "
             "confirmation prompt: %s. All other writes still require "
-            "confirmation. Disable by removing AKAHU_AUTOMATION_BYPASS from .env.",
+            "confirmation. Disable by setting AKAHU_AUTOMATION_BYPASS=false.",
             ", ".join(eligible),
         )
         return

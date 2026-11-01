@@ -35,6 +35,11 @@ The systemd unit is:
 
 The unit must reference the env file. It must not contain token values.
 
+The server does not read this file by itself. systemd loads it through
+`EnvironmentFile=`; for manual runs, either source it into the shell or set
+`AKAHU_ENV_FILE=/etc/nz-openbank-mcp/nz-openbank.env`. It never reads a `.env`
+from the working directory.
+
 ## Permissions
 
 Set root ownership and service-group read access:
