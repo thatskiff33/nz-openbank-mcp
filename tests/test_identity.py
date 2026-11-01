@@ -96,9 +96,15 @@ async def test_verify_name_account_scoped_accept(
         initials=["F", "W"],
         account_id="acc_chq_001",
     )
-    msg = ctx.elicit.await_args[0][0]
-    assert "acc_chq_001" in msg
-    assert "Fixture Person" in msg
+    assert ctx.elicit.await_args[0][0] == (
+        "Confirm: Send this name to Akahu to check against the holder of one account. "
+        "This sends an identity check to your bank and may incur a per-call charge.\n"
+        '- family name: "Person"\n'
+        '- given name: "Fixture"\n'
+        '- middle name: "W"\n'
+        '- initials: "F", "W"\n'
+        '- account: "acc_chq_001"'
+    )
     patched_client.verify_name.assert_awaited_once_with(
         family_name="Person",
         given_name="Fixture",

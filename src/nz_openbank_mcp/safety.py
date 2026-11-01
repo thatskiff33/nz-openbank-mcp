@@ -6,22 +6,32 @@ Three layers protect write operations:
      ElicitationCancelledError (a subclass) on Cancel or no answer.
   3. automation_bypass + automatable=True opts out of (2) for marked tools.
 
+The confirmation text is built from the final arguments, after any missing
+values have been collected, and lists every value sent to Akahu. Values are
+quoted with control and invisible characters escaped, so model-supplied text
+cannot change how the prompt reads; a value too long to show in full is
+refused rather than cut short.
+
 Confirmation uses ctx.elicit() on handshake-era connections. On 2026-07-28
 connections, which have no server-initiated requests, the tool instead returns
 an InputRequiredResult and proceeds only when the client retries with an
 accept answer and the single-use nonce issued for that ask. The SDK seals
 request_state and binds it to the tool name and arguments, so a nonce cannot
-be forged or replayed against a different call.
+be forged or replayed against a different call. The nonce is also tied to the
+exact prompt text, so a retry that would send anything other than what the
+user approved is asked again.
 
 `bypass_eligible_tools()` returns the names registered with automatable=True.
 """
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import secrets
 import time
-from collections.abc import Awaitable, Callable
+import unicodedata
+from collections.abc import Awaitable, Callable, Iterable
 from functools import wraps
 from typing import Any, ParamSpec, TypeVar, cast
 
@@ -56,7 +66,14 @@ _STATE_PREFIX = "consent:"
 _PENDING_TTL_SECONDS = 600.0
 # Bounds memory if a client asks repeatedly without ever answering.
 _PENDING_MAX = 256
-_PENDING: dict[str, float] = {}
+_PENDING: dict[str, tuple[float, str]] = {}
+
+MAX_SHOWN_CHARS = 1000
+_ESCAPES = {'"': '\\"', "\\": "\\\\", "\n": "\\n", "\r": "\\r", "\t": "\\t"}
+_HIDDEN_CATEGORIES = {"Cc", "Cf", "Cs", "Co", "Cn", "Zl", "Zp"}
+
+Describe = str | Callable[[dict[str, Any]], str]
+Prepare = Callable[[Any, dict[str, Any]], Awaitable[None]]
 
 
 class MissingCredentialsError(ToolError):
@@ -93,18 +110,39 @@ class _Confirmation(BaseModel):
     """
 
 
-def render_action_description(template: str, kwargs: dict[str, Any]) -> str:
-    """Render `{placeholders}` from the tool call's kwargs.
+def shown(value: str) -> str:
+    """`value` as one double-quoted literal, safe to place in a consent prompt."""
+    if not isinstance(value, str):
+        raise ToolError(f"Expected text, got {type(value).__name__}.")
+    if len(value) > MAX_SHOWN_CHARS:
+        raise ToolError(
+            f"A value is {len(value)} characters long; the limit is {MAX_SHOWN_CHARS} "
+            "so it can be shown in full for confirmation. Shorten it and retry."
+        )
+    out: list[str] = []
+    for ch in value:
+        if ch in _ESCAPES:
+            out.append(_ESCAPES[ch])
+        elif unicodedata.category(ch) in _HIDDEN_CATEGORIES:
+            out.append(f"\\u{ord(ch):04x}" if ord(ch) <= 0xFFFF else f"\\U{ord(ch):08x}")
+        else:
+            out.append(ch)
+    return '"' + "".join(out) + '"'
 
-    Missing keys are left as literal `{name}` rather than raising, so a typo
-    in the template never breaks a real call. Extras are ignored.
+
+def describe_request(summary: str, values: Iterable[tuple[str, str | list[str] | None]]) -> str:
+    """Consent text: the summary, then one line per value that will be sent.
+
+    None, empty strings and empty lists are omitted, matching the client,
+    which leaves them out of the request body.
     """
-
-    class _Tolerant(dict[str, Any]):
-        def __missing__(self, key: str) -> str:
-            return "{" + key + "}"
-
-    return template.format_map(_Tolerant(kwargs))
+    lines = [summary]
+    for label, value in values:
+        if not value:
+            continue
+        rendered = ", ".join(shown(v) for v in value) if isinstance(value, list) else shown(value)
+        lines.append(f"- {label}: {rendered}")
+    return "\n".join(lines)
 
 
 def _is_modern_protocol(ctx: Any) -> bool:
@@ -113,22 +151,29 @@ def _is_modern_protocol(ctx: Any) -> bool:
     return isinstance(version, str) and version in MODERN_PROTOCOL_VERSIONS
 
 
-def _issue_nonce() -> str:
+def _digest(message: str) -> str:
+    return hashlib.sha256(message.encode("utf-8", "surrogatepass")).hexdigest()
+
+
+def _issue_nonce(message: str) -> str:
     now = time.monotonic()
-    for stale in [n for n, exp in _PENDING.items() if exp <= now]:
+    for stale in [n for n, (exp, _) in _PENDING.items() if exp <= now]:
         del _PENDING[stale]
     while len(_PENDING) >= _PENDING_MAX:
         del _PENDING[next(iter(_PENDING))]
     nonce = secrets.token_urlsafe(16)
-    _PENDING[nonce] = now + _PENDING_TTL_SECONDS
+    _PENDING[nonce] = (now + _PENDING_TTL_SECONDS, _digest(message))
     return nonce
 
 
-def _consume_nonce(state: str | None) -> bool:
+def _consume_nonce(state: str | None, message: str) -> bool:
     if state is None or not state.startswith(_STATE_PREFIX):
         return False
-    expiry = _PENDING.pop(state.removeprefix(_STATE_PREFIX), None)
-    return expiry is not None and expiry > time.monotonic()
+    entry = _PENDING.pop(state.removeprefix(_STATE_PREFIX), None)
+    if entry is None:
+        return False
+    expiry, digest = entry
+    return expiry > time.monotonic() and secrets.compare_digest(digest, _digest(message))
 
 
 def _consent_request(message: str) -> InputRequiredResult:
@@ -138,7 +183,7 @@ def _consent_request(message: str) -> InputRequiredResult:
     )
     return InputRequiredResult(
         input_requests={_CONSENT_KEY: ElicitRequest(params=params)},
-        request_state=_STATE_PREFIX + _issue_nonce(),
+        request_state=_STATE_PREFIX + _issue_nonce(message),
     )
 
 
@@ -160,7 +205,7 @@ async def confirm_write(ctx: Any, action_description: str) -> InputRequiredResul
     """
     message = f"Confirm: {action_description}"
     if _is_modern_protocol(ctx):
-        if not _consume_nonce(ctx.request_state):
+        if not _consume_nonce(ctx.request_state, message):
             return _consent_request(message)
         _check_consent_response(ctx, action_description)
         return None
@@ -201,14 +246,19 @@ async def elicit_value(ctx: Any, prompt: str, response_type: Any) -> Any:
 
 
 def require_write_consent(
-    action_description: str,
+    describe: Describe,
     *,
     automatable: bool = False,
+    prepare: Prepare | None = None,
 ) -> Callable[[Callable[P, Awaitable[R]]], Callable[P, Awaitable[R]]]:
     """Decorator gating a write tool with the three safety layers.
 
-    action_description may contain `{placeholders}` filled from the tool's kwargs
-    (e.g. "Refresh account {account_id}.").
+    describe is the consent text, or a function building it from the tool's
+    keyword arguments (use describe_request so every sent value is shown).
+
+    prepare(ctx, kwargs), if given, runs after the read-only check and before
+    the consent prompt. It validates arguments and fills in missing values in
+    `kwargs`, so one confirmation covers the final request.
 
     automatable=True marks the tool as bypass-eligible: when
     AKAHU_AUTOMATION_BYPASS=true, the elicit() prompt is skipped for these
@@ -232,7 +282,10 @@ def require_write_consent(
                 )
 
             ctx = kwargs.get("ctx")
-            rendered = render_action_description(action_description, dict(kwargs))
+            call_kwargs = cast(dict[str, Any], kwargs)
+            if prepare is not None:
+                await prepare(ctx, call_kwargs)
+            rendered = describe if isinstance(describe, str) else describe(call_kwargs)
 
             if automatable and cfg.automation_bypass:
                 logger.info("[BYPASS] %s: %s", fn.__name__, rendered)
@@ -243,7 +296,7 @@ def require_write_consent(
                 if ask is not None:
                     return cast(R, ask)
 
-            return await fn(*args, **kwargs)
+            return await fn(*args, **call_kwargs)
 
         return wrapper
 

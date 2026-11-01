@@ -30,8 +30,8 @@ def _clear_pending() -> Iterator[None]:
     safety._PENDING.clear()
 
 
-async def _ask() -> str:
-    ask = await safety.confirm_write(_ctx(), "Refresh account a1.")
+async def _ask(message: str = "x") -> str:
+    ask = await safety.confirm_write(_ctx(), message)
     assert isinstance(ask, InputRequiredResult)
     assert ask.request_state is not None
     return ask.request_state
@@ -53,7 +53,7 @@ async def test_accept_with_issued_nonce_proceeds() -> None:
     state = await _ask()
     ctx = _ctx(state, {"consent": ElicitResult(action="accept", content={})})
 
-    assert await safety.confirm_write(ctx, "Refresh account a1.") is None
+    assert await safety.confirm_write(ctx, "x") is None
 
 
 async def test_nonce_is_single_use() -> None:
@@ -77,7 +77,7 @@ async def test_accept_without_issued_nonce_asks_again(state: str | None) -> None
 async def test_expired_nonce_asks_again(monkeypatch: pytest.MonkeyPatch) -> None:
     state = await _ask()
     nonce = state.removeprefix("consent:")
-    safety._PENDING[nonce] = 0.0
+    safety._PENDING[nonce] = (0.0, safety._PENDING[nonce][1])
     accept = {"consent": ElicitResult(action="accept", content={})}
 
     ask = await safety.confirm_write(_ctx(state, accept), "x")
@@ -106,15 +106,15 @@ async def test_cancel_or_missing_answer_raises_cancelled(responses: Any) -> None
 
 
 def test_issue_prunes_expired_and_caps_size(monkeypatch: pytest.MonkeyPatch) -> None:
-    safety._PENDING["old"] = 0.0
-    safety._issue_nonce()
+    safety._PENDING["old"] = (0.0, "")
+    safety._issue_nonce("x")
     assert "old" not in safety._PENDING
 
     monkeypatch.setattr(safety, "_PENDING_MAX", 3)
     safety._PENDING.clear()
-    first = safety._issue_nonce()
+    first = safety._issue_nonce("x")
     for _ in range(3):
-        safety._issue_nonce()
+        safety._issue_nonce("x")
     assert len(safety._PENDING) == 3
     assert first not in safety._PENDING
 
@@ -127,7 +127,7 @@ async def test_elicit_value_refuses_on_modern_protocol() -> None:
 async def test_write_tool_returns_ask_without_calling_body(writable_env: None) -> None:
     body = AsyncMock(return_value={"ok": True})
 
-    @safety.require_write_consent("Do {thing}.")
+    @safety.require_write_consent(lambda kw: f"Do {kw['thing']}.")
     async def tool(*, ctx: Any, thing: str) -> dict[str, Any]:
         return await body(ctx=ctx, thing=thing)
 
@@ -135,3 +135,15 @@ async def test_write_tool_returns_ask_without_calling_body(writable_env: None) -
 
     assert isinstance(result, InputRequiredResult)
     body.assert_not_awaited()
+
+
+async def test_nonce_is_bound_to_the_prompt_text() -> None:
+    state = await _ask('Send ticket: comment "a"')
+    accept = {"consent": ElicitResult(action="accept", content={})}
+
+    ask = await safety.confirm_write(_ctx(state, accept), 'Send ticket: comment "b"')
+
+    assert isinstance(ask, InputRequiredResult)
+    assert ask.input_requests is not None
+    assert ask.input_requests["consent"].params.message == 'Confirm: Send ticket: comment "b"'
+    assert state.removeprefix("consent:") not in safety._PENDING
