@@ -35,7 +35,7 @@ def _integral(value: object) -> object:
     return value
 
 
-Limit = Annotated[int, BeforeValidator(_integral), Field(ge=1, le=500, strict=True)]
+Limit = Annotated[int, Field(ge=1, le=500, strict=True), BeforeValidator(_integral)]
 
 SEARCH_DEFAULT_DAYS = 90
 
