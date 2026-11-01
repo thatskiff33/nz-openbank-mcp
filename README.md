@@ -212,7 +212,10 @@ Three checks sit in front of every write tool:
 1. **Read-only switch.** With `AKAHU_READ_ONLY=true` the tool refuses before
    any request leaves your machine.
 2. **Confirmation.** With writes on, the server asks you to approve each call
-   through your assistant's confirmation prompt. Declining or dismissing it
+   through your assistant's confirmation prompt. The prompt lists every value
+   that will be sent, such as the full text of a support ticket comment, in
+   quotes with hidden characters made visible. Values over 1,000 characters
+   are refused rather than shortened. Declining or dismissing the prompt
    cancels the call.
 3. **Narrow bypass.** `AKAHU_AUTOMATION_BYPASS=true` skips the prompt only for
    `acct_refresh_all_accounts` and `acct_refresh_account`, which just ask Akahu

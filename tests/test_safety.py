@@ -199,52 +199,107 @@ def test_bypass_eligible_tools_registry(fake_env: None) -> None:
         safety._BYPASS_REGISTRY.update(snapshot)  # noqa: SLF001
 
 
-def test_action_description_renders_kwargs(fake_env: None) -> None:
-    """The {placeholders} in the action description must format from call kwargs."""
-    from nz_openbank_mcp.safety import render_action_description
+def test_shown_quotes_and_escapes_layout_characters() -> None:
+    from nz_openbank_mcp.safety import shown
 
-    rendered = render_action_description(
-        "Refresh data for account {account_id}.",
-        {"account_id": "acc_123"},
+    assert shown("plain") == '"plain"'
+    assert shown('say "hi"\\') == '"say \\"hi\\"\\\\"'
+    assert shown("line one\n- account: fake") == '"line one\\n- account: fake"'
+    assert shown("tab\tcr\r") == '"tab\\tcr\\r"'
+
+
+def test_shown_escapes_invisible_and_bidi_characters() -> None:
+    from nz_openbank_mcp.safety import shown
+
+    assert shown("a\u202eb") == '"a\\u202eb"'
+    assert shown("zero\u200bwidth") == '"zero\\u200bwidth"'
+    assert shown("bell\x07") == '"bell\\u0007"'
+    assert shown("sep\u2028") == '"sep\\u2028"'
+    assert shown("tag\U000e0041") == '"tag\\U000e0041"'
+
+
+def test_shown_keeps_ordinary_unicode() -> None:
+    from nz_openbank_mcp.safety import shown
+
+    assert shown("Ng\u0101ti Wh\u0101tua") == '"Ng\u0101ti Wh\u0101tua"'
+
+
+def test_shown_refuses_values_too_long_to_show() -> None:
+    from fastmcp.exceptions import ToolError
+
+    from nz_openbank_mcp.safety import MAX_SHOWN_CHARS, shown
+
+    assert shown("x" * MAX_SHOWN_CHARS) == '"' + "x" * MAX_SHOWN_CHARS + '"'
+    with pytest.raises(ToolError, match="shown in full"):
+        shown("x" * (MAX_SHOWN_CHARS + 1))
+
+
+def test_describe_request_lists_values_and_omits_empty() -> None:
+    from nz_openbank_mcp.safety import describe_request
+
+    text = describe_request(
+        "Do it:",
+        [("a", "one"), ("b", None), ("c", ""), ("d", []), ("e", ["x", "y"])],
     )
-    assert rendered == "Refresh data for account acc_123."
+    assert text == 'Do it:\n- a: "one"\n- e: "x", "y"'
+    assert "None" not in text
 
 
-def test_action_description_tolerates_extra_kwargs(fake_env: None) -> None:
-    from nz_openbank_mcp.safety import render_action_description
-
-    rendered = render_action_description(
-        "Refresh data for account {account_id}.",
-        {"account_id": "acc_123", "extra": "ignored"},
-    )
-    assert rendered == "Refresh data for account acc_123."
-
-
-def test_action_description_tolerates_missing_kwargs(fake_env: None) -> None:
-    """If the template references a kwarg that wasn't passed, leave it as a literal."""
-    from nz_openbank_mcp.safety import render_action_description
-
-    rendered = render_action_description(
-        "Refresh data for account {account_id}.",
-        {},
-    )
-    assert "{account_id}" in rendered
-
-
-async def test_require_write_consent_renders_kwargs_in_prompt(
+async def test_require_write_consent_builds_prompt_from_kwargs(
     writable_env: None, ctx_factory: Callable[..., MagicMock]
 ) -> None:
-    from nz_openbank_mcp.safety import require_write_consent
+    from nz_openbank_mcp.safety import describe_request, require_write_consent
 
-    @require_write_consent("Refresh account {account_id}.")
+    @require_write_consent(lambda kw: describe_request("Refresh:", [("account", kw["account_id"])]))
     async def my_tool(*, ctx: Any, account_id: str) -> str:
         return f"refreshed-{account_id}"
 
     ctx = ctx_factory(elicit_action="accept")
     result = await my_tool(ctx=ctx, account_id="acc_xyz")
     assert result == "refreshed-acc_xyz"
-    msg = ctx.elicit.await_args[0][0]
-    assert "acc_xyz" in msg
+    assert ctx.elicit.await_args[0][0] == 'Confirm: Refresh:\n- account: "acc_xyz"'
+
+
+async def test_prepare_runs_before_consent_and_its_values_reach_the_tool(
+    writable_env: None, ctx_factory: Callable[..., MagicMock]
+) -> None:
+    from nz_openbank_mcp.safety import describe_request, require_write_consent
+
+    order: list[str] = []
+
+    async def prepare(_ctx: Any, kw: dict[str, Any]) -> None:
+        order.append("prepare")
+        kw["note"] = "filled"
+
+    @require_write_consent(
+        lambda kw: describe_request("Send:", [("note", kw["note"])]), prepare=prepare
+    )
+    async def my_tool(*, ctx: Any, note: str | None = None) -> str | None:
+        order.append("tool")
+        return note
+
+    ctx = ctx_factory(elicit_action="accept")
+    assert await my_tool(ctx=ctx) == "filled"
+    assert order == ["prepare", "tool"]
+    assert ctx.elicit.await_args[0][0] == 'Confirm: Send:\n- note: "filled"'
+
+
+async def test_prepare_does_not_run_when_read_only(
+    fake_env: None, ctx_factory: Callable[..., MagicMock]
+) -> None:
+    from nz_openbank_mcp.safety import ReadOnlyError, require_write_consent
+
+    async def prepare(_ctx: Any, _kw: dict[str, Any]) -> None:
+        raise AssertionError("prepare must not run")
+
+    @require_write_consent("Send.", prepare=prepare)
+    async def my_tool(*, ctx: Any) -> None:
+        return None
+
+    ctx = ctx_factory()
+    with pytest.raises(ReadOnlyError):
+        await my_tool(ctx=ctx)
+    ctx.elicit.assert_not_awaited()
 
 
 async def test_elicit_value_returns_data_on_accept(

@@ -10,9 +10,10 @@ from __future__ import annotations
 from typing import Any
 
 from fastmcp import Context, FastMCP
+from fastmcp.exceptions import ToolError
 
 from nz_openbank_mcp import deps
-from nz_openbank_mcp.safety import require_write_consent
+from nz_openbank_mcp.safety import describe_request, require_write_consent
 from nz_openbank_mcp.tool_metadata import (
     NON_DESTRUCTIVE_WRITE_ANNOTATIONS,
     READ_ONLY_ANNOTATIONS,
@@ -39,16 +40,33 @@ async def get_me() -> dict[str, Any]:
     }
 
 
+async def _check_name_args(_ctx: Any, kw: dict[str, Any]) -> None:
+    if not (kw.get("family_name") or "").strip():
+        raise ToolError("family_name must not be blank.")
+    if kw.get("account_id") is not None and not kw["account_id"].strip():
+        raise ToolError("account_id must not be blank; omit it to check every source.")
+
+
+def _describe_check(kw: dict[str, Any]) -> str:
+    scope = "one account" if kw.get("account_id") is not None else "every connected source"
+    return describe_request(
+        f"Send this name to Akahu to check against the holder of {scope}. "
+        "This sends an identity check to your bank and may incur a per-call charge.",
+        [
+            ("family name", kw.get("family_name")),
+            ("given name", kw.get("given_name")),
+            ("middle name", kw.get("middle_name")),
+            ("initials", kw.get("initials")),
+            ("account", kw.get("account_id")),
+        ],
+    )
+
+
 @server.tool(
     title="Verify Name",
     annotations=NON_DESTRUCTIVE_WRITE_ANNOTATIONS,
 )
-@require_write_consent(
-    "Verify the name '{given_name} {family_name}' "
-    "(account scope: {account_id}). This sends an identity check to your bank "
-    "and may incur a per-call charge.",
-    automatable=False,
-)
+@require_write_consent(_describe_check, automatable=False, prepare=_check_name_args)
 async def verify_name(
     *,
     ctx: Context,

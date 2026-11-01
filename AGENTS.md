@@ -48,7 +48,7 @@ ignores `uv.lock`.
 | `src/nz_openbank_mcp/models.py` | Pydantic models; aliases map Akahu's `_id` and `_account` |
 | `src/nz_openbank_mcp/config.py` | `AkahuConfig` (`AKAHU_*` settings); `get_config()` reads it once per process |
 | `src/nz_openbank_mcp/deps.py` | Shared client (`get_client`, `aclose_client`, closed by the root server's lifespan) |
-| `src/nz_openbank_mcp/safety.py` | `@require_write_consent` |
+| `src/nz_openbank_mcp/safety.py` | `@require_write_consent`, `describe_request`, `shown` |
 | `src/nz_openbank_mcp/formatting.py` | `format_money`, `mask_account`, `local_date`, `akahu_bound`, `nz_day`, `nz_today`, `parse_iso_date` |
 | `src/nz_openbank_mcp/aio.py` | `pair`: two requests at once; a failure cancels the other and is raised as itself |
 
@@ -76,18 +76,24 @@ Args:
 Print what hosts will see with:
 `uv run python -c 'import asyncio; from nz_openbank_mcp.server import build_server; m=build_server(); [print(t.name, ":", t.description) for t in asyncio.run(m.list_tools())]'`
 
-**Writes go through `@require_write_consent(prompt, automatable=...)`,**
+**Writes go through `@require_write_consent(describe, automatable=..., prepare=...)`,**
 which applies, in order:
 
 1. `AKAHU_READ_ONLY=true` (the default) raises `ReadOnlyError` before any
    request.
-2. The user confirms each call. On protocol 2025-11-25 and earlier this is a
+2. `prepare(ctx, kwargs)`, if set, validates arguments and fills missing
+   values, so a doomed call fails before the user is asked and one
+   confirmation covers the final request.
+3. The user confirms each call. `describe` builds the prompt from the final
+   arguments with `describe_request`, which lists every value sent to Akahu,
+   omits empty ones, and quotes each through `shown` (control and invisible
+   characters escaped; over `MAX_SHOWN_CHARS` is refused, never cut). On protocol 2025-11-25 and earlier this is a
    server-initiated `ctx.elicit()`. On 2026-07-28 the tool returns an
    `InputRequiredResult` with a single-use nonce in `request_state` and runs
    when the client retries with an accept and that nonce. Mid-call value
    prompts (`elicit_value`) do not work on 2026-07-28; take values as
    arguments. Decline or cancel raises `ElicitationDeclinedError`.
-3. `automatable=True` plus `AKAHU_AUTOMATION_BYPASS=true` skips step 2 and
+4. `automatable=True` plus `AKAHU_AUTOMATION_BYPASS=true` skips step 3 and
    logs at INFO. Config validation rejects the bypass while read-only is on.
 
 Default to `automatable=False`; only idempotent, rate-limited actions with no

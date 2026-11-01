@@ -6,6 +6,12 @@ Three layers protect write operations:
      ElicitationCancelledError (a subclass) on Cancel or no answer.
   3. automation_bypass + automatable=True opts out of (2) for marked tools.
 
+The confirmation text is built from the final arguments, after any missing
+values have been collected, and lists every value sent to Akahu. Values are
+quoted with control and invisible characters escaped, so model-supplied text
+cannot change how the prompt reads; a value too long to show in full is
+refused rather than cut short.
+
 Confirmation uses ctx.elicit() on handshake-era connections. On 2026-07-28
 connections, which have no server-initiated requests, the tool instead returns
 an InputRequiredResult and proceeds only when the client retries with an
@@ -21,7 +27,8 @@ from __future__ import annotations
 import logging
 import secrets
 import time
-from collections.abc import Awaitable, Callable
+import unicodedata
+from collections.abc import Awaitable, Callable, Iterable
 from functools import wraps
 from typing import Any, ParamSpec, TypeVar, cast
 
@@ -58,6 +65,13 @@ _PENDING_TTL_SECONDS = 600.0
 _PENDING_MAX = 256
 _PENDING: dict[str, float] = {}
 
+MAX_SHOWN_CHARS = 1000
+_ESCAPES = {'"': '\\"', "\\": "\\\\", "\n": "\\n", "\r": "\\r", "\t": "\\t"}
+_HIDDEN_CATEGORIES = {"Cc", "Cf", "Cs", "Co", "Cn", "Zl", "Zp"}
+
+Describe = str | Callable[[dict[str, Any]], str]
+Prepare = Callable[[Any, dict[str, Any]], Awaitable[None]]
+
 
 class MissingCredentialsError(ToolError):
     """Raised when AKAHU_APP_TOKEN or AKAHU_USER_TOKEN is unset."""
@@ -93,18 +107,37 @@ class _Confirmation(BaseModel):
     """
 
 
-def render_action_description(template: str, kwargs: dict[str, Any]) -> str:
-    """Render `{placeholders}` from the tool call's kwargs.
+def shown(value: str) -> str:
+    """`value` as one double-quoted literal, safe to place in a consent prompt."""
+    if len(value) > MAX_SHOWN_CHARS:
+        raise ToolError(
+            f"A value is {len(value)} characters long; the limit is {MAX_SHOWN_CHARS} "
+            "so it can be shown in full for confirmation. Shorten it and retry."
+        )
+    out: list[str] = []
+    for ch in value:
+        if ch in _ESCAPES:
+            out.append(_ESCAPES[ch])
+        elif unicodedata.category(ch) in _HIDDEN_CATEGORIES:
+            out.append(f"\\u{ord(ch):04x}" if ord(ch) <= 0xFFFF else f"\\U{ord(ch):08x}")
+        else:
+            out.append(ch)
+    return '"' + "".join(out) + '"'
 
-    Missing keys are left as literal `{name}` rather than raising, so a typo
-    in the template never breaks a real call. Extras are ignored.
+
+def describe_request(summary: str, values: Iterable[tuple[str, str | list[str] | None]]) -> str:
+    """Consent text: the summary, then one line per value that will be sent.
+
+    None, empty strings and empty lists are omitted, matching the client,
+    which leaves them out of the request body.
     """
-
-    class _Tolerant(dict[str, Any]):
-        def __missing__(self, key: str) -> str:
-            return "{" + key + "}"
-
-    return template.format_map(_Tolerant(kwargs))
+    lines = [summary]
+    for label, value in values:
+        if not value:
+            continue
+        rendered = ", ".join(shown(v) for v in value) if isinstance(value, list) else shown(value)
+        lines.append(f"- {label}: {rendered}")
+    return "\n".join(lines)
 
 
 def _is_modern_protocol(ctx: Any) -> bool:
@@ -201,14 +234,19 @@ async def elicit_value(ctx: Any, prompt: str, response_type: Any) -> Any:
 
 
 def require_write_consent(
-    action_description: str,
+    describe: Describe,
     *,
     automatable: bool = False,
+    prepare: Prepare | None = None,
 ) -> Callable[[Callable[P, Awaitable[R]]], Callable[P, Awaitable[R]]]:
     """Decorator gating a write tool with the three safety layers.
 
-    action_description may contain `{placeholders}` filled from the tool's kwargs
-    (e.g. "Refresh account {account_id}.").
+    describe is the consent text, or a function building it from the tool's
+    keyword arguments (use describe_request so every sent value is shown).
+
+    prepare(ctx, kwargs), if given, runs after the read-only check and before
+    the consent prompt. It validates arguments and fills in missing values in
+    `kwargs`, so one confirmation covers the final request.
 
     automatable=True marks the tool as bypass-eligible: when
     AKAHU_AUTOMATION_BYPASS=true, the elicit() prompt is skipped for these
@@ -232,7 +270,10 @@ def require_write_consent(
                 )
 
             ctx = kwargs.get("ctx")
-            rendered = render_action_description(action_description, dict(kwargs))
+            call_kwargs = cast(dict[str, Any], kwargs)
+            if prepare is not None:
+                await prepare(ctx, call_kwargs)
+            rendered = describe if isinstance(describe, str) else describe(call_kwargs)
 
             if automatable and cfg.automation_bypass:
                 logger.info("[BYPASS] %s: %s", fn.__name__, rendered)
@@ -243,7 +284,7 @@ def require_write_consent(
                 if ask is not None:
                     return cast(R, ask)
 
-            return await fn(*args, **kwargs)
+            return await fn(*args, **call_kwargs)
 
         return wrapper
 

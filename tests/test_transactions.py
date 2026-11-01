@@ -324,20 +324,15 @@ async def test_report_transaction_issue_rejects_unknown_issue_type(
 async def test_report_transaction_issue_duplicate_elicits_other_id(
     writable_env: None, ctx_factory: Callable[..., MagicMock], patched_client: MagicMock
 ) -> None:
-    """When other_transaction_id is omitted, the tool prompts for it mid-call.
-
-    Pattern: build ctx via ctx_factory(), then override ctx.elicit.side_effect
-    with the sequence of results we want. First call is the safety
-    confirmation (empty AcceptedElicitation), second is the typed value.
-    """
+    """A missing other_transaction_id is asked for first; the consent prompt then shows it."""
     from fastmcp.server.elicitation import AcceptedElicitation
 
     from nz_openbank_mcp.tools.transactions import report_transaction_issue
 
     ctx = ctx_factory()
     ctx.elicit.side_effect = [
-        AcceptedElicitation(data={}),
         AcceptedElicitation(data="txn_002"),
+        AcceptedElicitation(data={}),
     ]
     result = await report_transaction_issue(
         ctx=ctx, transaction_id="txn_001", issue_type="DUPLICATE"
@@ -346,6 +341,12 @@ async def test_report_transaction_issue_duplicate_elicits_other_id(
     assert ctx.elicit.await_count == 2
     _, kwargs = patched_client.report_transaction_issue.await_args
     assert kwargs["other_transaction_id"] == "txn_002"
+    assert ctx.elicit.await_args_list[1][0][0] == (
+        "Confirm: Send this support ticket to a person at Akahu:\n"
+        '- transaction: "txn_001"\n'
+        '- type: "DUPLICATE"\n'
+        '- duplicate of: "txn_002"'
+    )
 
 
 async def test_report_transaction_issue_enrichment_elicits_fields(
@@ -357,8 +358,8 @@ async def test_report_transaction_issue_enrichment_elicits_fields(
 
     ctx = ctx_factory()
     ctx.elicit.side_effect = [
-        AcceptedElicitation(data={}),
         AcceptedElicitation(data=["merchant", "category"]),
+        AcceptedElicitation(data={}),
     ]
     result = await report_transaction_issue(
         ctx=ctx, transaction_id="txn_001", issue_type="ENRICHMENT_ERROR"
@@ -379,8 +380,8 @@ async def test_report_transaction_issue_field_fill_decline(
 
     ctx = ctx_factory()
     ctx.elicit.side_effect = [
-        AcceptedElicitation(data={}),
         DeclinedElicitation(),
+        AcceptedElicitation(data={}),
     ]
     with pytest.raises(ElicitationDeclinedError):
         await report_transaction_issue(ctx=ctx, transaction_id="txn_001", issue_type="DUPLICATE")
@@ -397,8 +398,8 @@ async def test_report_transaction_issue_field_fill_cancel(
 
     ctx = ctx_factory()
     ctx.elicit.side_effect = [
-        AcceptedElicitation(data={}),
         CancelledElicitation(),
+        AcceptedElicitation(data={}),
     ]
     with pytest.raises(ElicitationCancelledError):
         await report_transaction_issue(ctx=ctx, transaction_id="txn_001", issue_type="DUPLICATE")
@@ -417,8 +418,8 @@ async def test_report_transaction_issue_empty_fields_treated_as_decline(
 
     ctx = ctx_factory()
     ctx.elicit.side_effect = [
-        AcceptedElicitation(data={}),
         AcceptedElicitation(data=[]),
+        AcceptedElicitation(data={}),
     ]
     with pytest.raises(ElicitationDeclinedError):
         await report_transaction_issue(

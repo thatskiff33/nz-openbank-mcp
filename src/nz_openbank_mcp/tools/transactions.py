@@ -6,6 +6,7 @@ from datetime import timedelta
 from typing import Annotated, Any, Literal
 
 from fastmcp import Context, FastMCP
+from fastmcp.exceptions import ToolError
 from pydantic import BeforeValidator, Field
 
 from nz_openbank_mcp import deps
@@ -14,7 +15,9 @@ from nz_openbank_mcp.client import AkahuClient
 from nz_openbank_mcp.formatting import akahu_bound, format_money, local_date, nz_day, nz_today
 from nz_openbank_mcp.models import Account, PendingTransaction, Transaction
 from nz_openbank_mcp.safety import (
+    MAX_SHOWN_CHARS,
     ElicitationDeclinedError,
+    describe_request,
     elicit_value,
     require_write_consent,
 )
@@ -237,28 +240,59 @@ async def search_transactions(
     }
 
 
+async def _complete_issue(ctx: Any, kw: dict[str, Any]) -> None:
+    if not (kw.get("transaction_id") or "").strip():
+        raise ToolError("transaction_id must not be blank.")
+    issue_type = kw["issue_type"]
+    if issue_type == "DUPLICATE" and not kw.get("other_transaction_id"):
+        other = await elicit_value(ctx, "Provide the paired duplicate transaction id:", str)
+        if not isinstance(other, str) or not other.strip():
+            raise ElicitationDeclinedError("User provided no transaction id.")
+        kw["other_transaction_id"] = other
+    if issue_type in {"ENRICHMENT_ERROR", "ENRICHMENT_SUGGESTION"} and not kw.get("fields"):
+        fields = await elicit_value(
+            ctx,
+            f"List the affected field names for {issue_type} (e.g. merchant, category):",
+            list[str],
+        )
+        if not fields:
+            raise ElicitationDeclinedError("User provided no fields.")
+        kw["fields"] = fields
+
+
+def _describe_issue(kw: dict[str, Any]) -> str:
+    return describe_request(
+        "Send this support ticket to a person at Akahu:",
+        [
+            ("transaction", kw.get("transaction_id")),
+            ("type", kw.get("issue_type")),
+            ("duplicate of", kw.get("other_transaction_id")),
+            ("fields", kw.get("fields")),
+            ("comment", kw.get("comment")),
+        ],
+    )
+
+
 @server.tool(
     title="Report Transaction Issue",
     annotations=NON_DESTRUCTIVE_WRITE_ANNOTATIONS,
 )
-@require_write_consent(
-    "Report an issue with transaction {transaction_id} to Akahu support staff. "
-    "Issue type: {issue_type}.",
-    automatable=False,
-)
+@require_write_consent(_describe_issue, automatable=False, prepare=_complete_issue)
 async def report_transaction_issue(
     *,
     ctx: Context,
     transaction_id: str,
     issue_type: IssueType,
     fields: list[str] | None = None,
-    comment: str | None = None,
+    comment: Annotated[str | None, Field(max_length=MAX_SHOWN_CHARS)] = None,
     other_transaction_id: str | None = None,
 ) -> dict[str, Any]:
     """Submit a support ticket about a transaction to Akahu staff.
 
     Sends a ticket to a human at Akahu support. Always elicits user
-    confirmation (not bypass-eligible). issue_type validation:
+    confirmation (not bypass-eligible); the prompt shows every value in the
+    ticket, including the comment. Missing required values are collected
+    before that prompt. issue_type validation:
       - "DUPLICATE": requires other_transaction_id (the paired duplicate).
       - "ENRICHMENT_ERROR": requires fields=[...] listing affected field names.
       - "ENRICHMENT_SUGGESTION": requires fields=[...] listing suggested fields.
@@ -270,25 +304,11 @@ async def report_transaction_issue(
         issue_type: One of "DUPLICATE", "ENRICHMENT_ERROR", "ENRICHMENT_SUGGESTION".
         fields: Affected field names; required for ENRICHMENT_* issue types.
             Omitted -> the user is prompted to supply them via elicitation.
-        comment: Optional free-text context for the support agent.
+        comment: Optional free-text context for the support agent, up to
+            1,000 characters.
         other_transaction_id: Paired transaction id; required for DUPLICATE.
             Omitted -> the user is prompted to supply it via elicitation.
     """
-    if issue_type == "DUPLICATE" and not other_transaction_id:
-        other_transaction_id = await elicit_value(
-            ctx,
-            "Provide the paired duplicate transaction id:",
-            str,
-        )
-    if issue_type in {"ENRICHMENT_ERROR", "ENRICHMENT_SUGGESTION"} and not fields:
-        fields = await elicit_value(
-            ctx,
-            f"List the affected field names for {issue_type} (e.g. merchant, category):",
-            list[str],
-        )
-        if not fields:
-            raise ElicitationDeclinedError("User provided no fields.")
-
     result = await deps.get_client().report_transaction_issue(
         transaction_id,
         issue_type=issue_type,

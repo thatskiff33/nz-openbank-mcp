@@ -10,7 +10,7 @@ from nz_openbank_mcp import deps
 from nz_openbank_mcp.aio import pair
 from nz_openbank_mcp.formatting import format_money, mask_account
 from nz_openbank_mcp.models import Account
-from nz_openbank_mcp.safety import require_write_consent
+from nz_openbank_mcp.safety import describe_request, require_write_consent
 from nz_openbank_mcp.tool_metadata import (
     IDEMPOTENT_WRITE_ANNOTATIONS,
     READ_ONLY_ANNOTATIONS,
@@ -142,7 +142,10 @@ async def refresh_all_accounts(*, ctx: Context) -> dict[str, Any]:
     annotations=IDEMPOTENT_WRITE_ANNOTATIONS,
 )
 @require_write_consent(
-    "Refresh data for account {account_id}. Rate-limited by your bank.",
+    lambda kw: describe_request(
+        "Refresh data for one account. Rate-limited by your bank.",
+        [("account", kw.get("account_id"))],
+    ),
     automatable=True,
 )
 async def refresh_account(*, ctx: Context, account_id: str) -> dict[str, Any]:

@@ -127,7 +127,7 @@ async def test_elicit_value_refuses_on_modern_protocol() -> None:
 async def test_write_tool_returns_ask_without_calling_body(writable_env: None) -> None:
     body = AsyncMock(return_value={"ok": True})
 
-    @safety.require_write_consent("Do {thing}.")
+    @safety.require_write_consent(lambda kw: f"Do {kw['thing']}.")
     async def tool(*, ctx: Any, thing: str) -> dict[str, Any]:
         return await body(ctx=ctx, thing=thing)
 
