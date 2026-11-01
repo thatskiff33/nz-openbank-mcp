@@ -24,13 +24,15 @@ classifiers = [
 dependencies = [
     "fastmcp>=4.1.4,<5",
     "mcp>=2.3.0,<3",
+    "mcp-types>=2.3.0,<3",
     "httpx>=0.28.1,<1",
     "pydantic>=2.14,<3",
     "pydantic-settings>=2.14.2,<3",
-    "python-dotenv>=1.2,<2",
+    "python-dotenv>=1.2.2,<2",
     # Transitive floors and exclusions. uvx ignores uv.lock and may reuse a
     # cached environment, so these keep known-vulnerable or known-broken
     # releases out of plugin and Desktop Extension launches.
+    # sse-starlette 3.4.6 fails on import on Windows.
     "sse-starlette!=3.4.6",
     "anyio>=4.14.2",
     "authlib>=1.9.1",

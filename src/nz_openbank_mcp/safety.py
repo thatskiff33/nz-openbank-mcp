@@ -2,9 +2,16 @@
 
 Three layers protect write operations:
   1. AKAHU_READ_ONLY=true (default) -> raise ReadOnlyError before any HTTP call.
-  2. ctx.elicit() per call -> raise ElicitationDeclinedError on Decline,
-     ElicitationCancelledError (a subclass) on Cancel.
+  2. Per-call user confirmation -> raise ElicitationDeclinedError on Decline,
+     ElicitationCancelledError (a subclass) on Cancel or no answer.
   3. automation_bypass + automatable=True opts out of (2) for marked tools.
+
+Confirmation uses ctx.elicit() on handshake-era connections. On 2026-07-28
+connections, which have no server-initiated requests, the tool instead returns
+an InputRequiredResult and proceeds only when the client retries with an
+accept answer and the single-use nonce issued for that ask. The SDK seals
+request_state and binds it to the tool name and arguments, so a nonce cannot
+be forged or replayed against a different call.
 
 `bypass_eligible_tools()` returns the names registered with automatable=True.
 """
@@ -12,16 +19,26 @@ Three layers protect write operations:
 from __future__ import annotations
 
 import logging
+import secrets
+import time
 from collections.abc import Awaitable, Callable
 from functools import wraps
-from typing import Any, ParamSpec, TypeVar
+from typing import Any, ParamSpec, TypeVar, cast
 
 from fastmcp.exceptions import ToolError
 from fastmcp.server.elicitation import (
     AcceptedElicitation,
     CancelledElicitation,
     DeclinedElicitation,
+    get_elicitation_schema,
 )
+from mcp.types import (
+    ElicitRequest,
+    ElicitRequestFormParams,
+    ElicitResult,
+    InputRequiredResult,
+)
+from mcp_types.version import MODERN_PROTOCOL_VERSIONS
 from pydantic import BaseModel
 
 from nz_openbank_mcp.config import AkahuConfig
@@ -32,6 +49,14 @@ P = ParamSpec("P")
 R = TypeVar("R")
 
 _BYPASS_REGISTRY: set[str] = set()
+
+_CONSENT_KEY = "consent"
+_STATE_PREFIX = "consent:"
+# Matches the SDK's default request_state lifetime.
+_PENDING_TTL_SECONDS = 600.0
+# Bounds memory if a client asks repeatedly without ever answering.
+_PENDING_MAX = 256
+_PENDING: dict[str, float] = {}
 
 
 class MissingCredentialsError(ToolError):
@@ -82,13 +107,67 @@ def render_action_description(template: str, kwargs: dict[str, Any]) -> str:
     return template.format_map(_Tolerant(kwargs))
 
 
-async def confirm_write(ctx: Any, action_description: str) -> None:
-    """Ask the user to confirm a write. Raise on decline/cancel."""
+def _is_modern_protocol(ctx: Any) -> bool:
+    rc = getattr(ctx, "request_context", None)
+    version = getattr(rc, "protocol_version", None)
+    return isinstance(version, str) and version in MODERN_PROTOCOL_VERSIONS
+
+
+def _issue_nonce() -> str:
+    now = time.monotonic()
+    for stale in [n for n, exp in _PENDING.items() if exp <= now]:
+        del _PENDING[stale]
+    while len(_PENDING) >= _PENDING_MAX:
+        del _PENDING[next(iter(_PENDING))]
+    nonce = secrets.token_urlsafe(16)
+    _PENDING[nonce] = now + _PENDING_TTL_SECONDS
+    return nonce
+
+
+def _consume_nonce(state: str | None) -> bool:
+    if state is None or not state.startswith(_STATE_PREFIX):
+        return False
+    expiry = _PENDING.pop(state.removeprefix(_STATE_PREFIX), None)
+    return expiry is not None and expiry > time.monotonic()
+
+
+def _consent_request(message: str) -> InputRequiredResult:
+    params = ElicitRequestFormParams(
+        message=message,
+        requested_schema=get_elicitation_schema(_Confirmation),
+    )
+    return InputRequiredResult(
+        input_requests={_CONSENT_KEY: ElicitRequest(params=params)},
+        request_state=_STATE_PREFIX + _issue_nonce(),
+    )
+
+
+def _check_consent_response(ctx: Any, action_description: str) -> None:
+    responses = ctx.input_responses or {}
+    response = responses.get(_CONSENT_KEY)
+    if isinstance(response, ElicitResult) and response.action == "accept":
+        return
+    if isinstance(response, ElicitResult) and response.action == "decline":
+        raise ElicitationDeclinedError(f"User declined: {action_description}")
+    raise ElicitationCancelledError(f"User cancelled: {action_description}")
+
+
+async def confirm_write(ctx: Any, action_description: str) -> InputRequiredResult | None:
+    """Ask the user to confirm a write. Raise on decline/cancel.
+
+    Returns an InputRequiredResult the tool must return as-is when the client
+    still has to be asked (2026-07-28 connections); None once confirmed.
+    """
     message = f"Confirm: {action_description}"
+    if _is_modern_protocol(ctx):
+        if not _consume_nonce(ctx.request_state):
+            return _consent_request(message)
+        _check_consent_response(ctx, action_description)
+        return None
     result = await ctx.elicit(message, response_type=_Confirmation)
     match result:
         case AcceptedElicitation():
-            return
+            return None
         case DeclinedElicitation():
             raise ElicitationDeclinedError(
                 f"User declined: {action_description}"
@@ -109,7 +188,12 @@ async def elicit_value(ctx: Any, prompt: str, response_type: Any) -> Any:
     Wraps FastMCP 3.3's typed elicitation: `response_type` is forwarded to the
     client and serialised into JSON Schema, so primitives (str, int), `list[T]`,
     and Pydantic models all render as appropriate UI in the client.
+
+    2026-07-28 connections cannot be asked mid-call, so the call fails before
+    any request is sent and the caller can retry with the value as an argument.
     """
+    if _is_modern_protocol(ctx):
+        raise ToolError(f"Missing value; pass it as a tool argument and retry. {prompt}")
     result = await ctx.elicit(prompt, response_type=response_type)
     match result:
         case AcceptedElicitation():
@@ -167,7 +251,9 @@ def require_write_consent(
             else:
                 if ctx is None:  # pragma: no cover
                     raise ToolError("Internal error: write tool missing ctx parameter.")
-                await confirm_write(ctx, rendered)
+                ask = await confirm_write(ctx, rendered)
+                if ask is not None:
+                    return cast(R, ask)
 
             return await fn(*args, **kwargs)
 

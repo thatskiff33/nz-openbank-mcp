@@ -77,6 +77,15 @@ The decorator (in `safety.py`) enforces:
 3. **Automation bypass.** If the decorator was called with `automatable=True`
    AND `AKAHU_AUTOMATION_BYPASS=true`, layer 2 is skipped (still logs at INFO).
 
+Layer 2 depends on the negotiated MCP protocol. Handshake-era connections
+(2025-11-25 and earlier) get a server-initiated `ctx.elicit()`. 2026-07-28
+connections have no server-initiated requests, so the tool returns an
+`InputRequiredResult` with a single-use nonce in `request_state` and runs only
+when the client retries with an accept answer and that nonce. Mid-call value
+prompts (`elicit_value`) fail on 2026-07-28 connections; pass the value as an
+argument instead. `tests/test_consent_e2e.py` covers both eras through a real
+`fastmcp.Client`.
+
 `bypass_eligible_tools()` is the runtime registry consulted by the startup
 banner. `AKAHU_READ_ONLY=true` + `AKAHU_AUTOMATION_BYPASS=true` is rejected at
 startup by `AkahuConfig._reject_incoherent_bypass`.

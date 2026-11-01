@@ -499,7 +499,7 @@ def test_configure_logging_suppresses_sensitive_http_client_logs() -> None:
 
     old_levels = {
         logger_name: logging.getLogger(logger_name).level
-        for logger_name in ("httpx", "httpcore", "uvicorn.access")
+        for logger_name in ("httpx", "httpcore", "httpx2", "httpcore2", "uvicorn.access")
     }
     try:
         for logger_name in old_levels:
@@ -507,9 +507,8 @@ def test_configure_logging_suppresses_sensitive_http_client_logs() -> None:
 
         configure_logging("INFO")
 
-        assert logging.getLogger("httpx").level == logging.WARNING
-        assert logging.getLogger("httpcore").level == logging.WARNING
-        assert logging.getLogger("uvicorn.access").level == logging.WARNING
+        for logger_name in old_levels:
+            assert logging.getLogger(logger_name).level == logging.WARNING
     finally:
         for logger_name, level in old_levels.items():
             logging.getLogger(logger_name).setLevel(level)

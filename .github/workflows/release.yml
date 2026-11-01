@@ -33,7 +33,12 @@ jobs:
           enable-cache: true
 
       - name: sync deps (incl. dev)
-        run: uv sync --extra dev
+        run: uv sync --locked --extra dev
+
+      - name: audit locked dependencies
+        run: |
+          uv export --frozen --no-emit-project --all-extras --format requirements-txt \
+            | uv run pip-audit --strict --disable-pip --require-hashes -r /dev/stdin
 
       - name: ruff
         run: uv run ruff check .
