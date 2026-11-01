@@ -291,3 +291,4 @@ the authenticated exception in `docs/public-https-streamable-http.md`.
 - Do not set `AKAHU_READ_ONLY=false` as part of secret rotation.
 - Do not paste token values into GitHub issues, PRs, ChatGPT, Claude, or logs.
 - Do not fix a connector problem by publishing an ad hoc public MCP endpoint.
+
