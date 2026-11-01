@@ -75,9 +75,7 @@ async def get_transactions(
     """
     client = deps.get_client()
     if account_id is not None:
-        iterator = client.iter_account_transactions(
-            account_id, start=start_date, end=end_date
-        )
+        iterator = client.iter_account_transactions(account_id, start=start_date, end=end_date)
     else:
         iterator = client.iter_transactions(start=start_date, end=end_date)
 

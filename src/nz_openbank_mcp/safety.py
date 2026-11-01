@@ -169,17 +169,11 @@ async def confirm_write(ctx: Any, action_description: str) -> InputRequiredResul
         case AcceptedElicitation():
             return None
         case DeclinedElicitation():
-            raise ElicitationDeclinedError(
-                f"User declined: {action_description}"
-            )
+            raise ElicitationDeclinedError(f"User declined: {action_description}")
         case CancelledElicitation():
-            raise ElicitationCancelledError(
-                f"User cancelled: {action_description}"
-            )
+            raise ElicitationCancelledError(f"User cancelled: {action_description}")
         case _:  # pragma: no cover  # why: ctx.elicit return type is exhausted above
-            raise AssertionError(
-                f"Unexpected elicitation result: {type(result).__name__}"
-            )
+            raise AssertionError(f"Unexpected elicitation result: {type(result).__name__}")
 
 
 async def elicit_value(ctx: Any, prompt: str, response_type: Any) -> Any:
@@ -199,17 +193,11 @@ async def elicit_value(ctx: Any, prompt: str, response_type: Any) -> Any:
         case AcceptedElicitation():
             return result.data
         case DeclinedElicitation():
-            raise ElicitationDeclinedError(
-                f"User declined providing: {prompt}"
-            )
+            raise ElicitationDeclinedError(f"User declined providing: {prompt}")
         case CancelledElicitation():
-            raise ElicitationCancelledError(
-                f"User cancelled providing: {prompt}"
-            )
+            raise ElicitationCancelledError(f"User cancelled providing: {prompt}")
         case _:  # pragma: no cover  # why: ctx.elicit return type is exhausted above
-            raise AssertionError(
-                f"Unexpected elicitation result: {type(result).__name__}"
-            )
+            raise AssertionError(f"Unexpected elicitation result: {type(result).__name__}")
 
 
 def require_write_consent(
