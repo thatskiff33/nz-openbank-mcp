@@ -16,6 +16,7 @@
     "new-zealand",
     "banking"
   ],
+  "category": "finance",
   "logo": "assets/logo.png",
   "variables": {
     "type": "object",

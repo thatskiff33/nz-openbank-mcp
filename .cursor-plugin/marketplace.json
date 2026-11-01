@@ -4,8 +4,6 @@
     "name": "thatskiff33",
     "email": "258212727+thatskiff33@users.noreply.github.com"
   },
-  "description": "MCP server for New Zealand open banking via the Akahu API. Read-by-default, write-with-consent.",
-  "logo": "plugin/assets/logo.png",
   "metadata": {
     "description": "MCP server for New Zealand open banking via the Akahu API. Read-by-default, write-with-consent."
   },
@@ -13,9 +11,7 @@
     {
       "name": "nz-openbank-mcp",
       "source": "plugin",
-      "description": "MCP server for New Zealand open banking via the Akahu API. Read-by-default, write-with-consent.",
-      "category": "finance",
-      "logo": "assets/logo.png"
+      "description": "MCP server for New Zealand open banking via the Akahu API. Read-by-default, write-with-consent."
     }
   ]
 }

@@ -191,6 +191,7 @@ def cursor_plugin(base: dict[str, Any]) -> dict[str, Any]:
         "repository": base["repository"],
         "license": base["license"],
         "keywords": base["keywords"],
+        "category": base["category"].lower(),
         "logo": base["logo"],
         "variables": {
             "type": "object",
@@ -205,16 +206,12 @@ def cursor_marketplace(base: dict[str, Any]) -> dict[str, Any]:
     return {
         "name": base["marketplace"]["name"],
         "owner": {"name": base["author"]["name"], "email": base["author"]["email"]},
-        "description": base["marketplace"]["description"],
-        "logo": f"{PLUGIN_DIR}/{base['logo']}",
         "metadata": {"description": base["marketplace"]["description"]},
         "plugins": [
             {
                 "name": base["name"],
                 "source": PLUGIN_DIR,
                 "description": base["marketplace"]["description"],
-                "category": base["category"].lower(),
-                "logo": base["logo"],
             }
         ],
     }
