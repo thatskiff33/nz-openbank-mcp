@@ -1,0 +1,62 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.thatskiff33/nz-openbank-mcp",
+  "title": "NZ Open Banking (Akahu)",
+  "description": "Ask about your NZ bank accounts via Akahu open finance. Read-only by default, consent per write.",
+  "version": "0.1.4",
+  "websiteUrl": "https://github.com/thatskiff33/nz-openbank-mcp",
+  "repository": {
+    "url": "https://github.com/thatskiff33/nz-openbank-mcp",
+    "source": "github"
+  },
+  "icons": [
+    {
+      "src": "https://raw.githubusercontent.com/thatskiff33/nz-openbank-mcp/main/docs/assets/icon.svg",
+      "mimeType": "image/svg+xml"
+    }
+  ],
+  "packages": [
+    {
+      "registryType": "pypi",
+      "registryBaseUrl": "https://pypi.org",
+      "identifier": "nz-openbank-mcp",
+      "version": "0.1.4",
+      "runtimeHint": "uvx",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "AKAHU_USER_TOKEN",
+          "description": "User token from https://my.akahu.nz/developers.",
+          "format": "string",
+          "isRequired": true,
+          "isSecret": true
+        },
+        {
+          "name": "AKAHU_APP_TOKEN",
+          "description": "App token from https://my.akahu.nz/developers.",
+          "format": "string",
+          "isRequired": true,
+          "isSecret": true
+        },
+        {
+          "name": "AKAHU_READ_ONLY",
+          "description": "Refuse all write tools when 'true'. Leave as 'true' unless you specifically need refresh/verify/report writes.",
+          "format": "string",
+          "isRequired": false,
+          "isSecret": false,
+          "default": "true"
+        },
+        {
+          "name": "AKAHU_AUTOMATION_BYPASS",
+          "description": "Skip per-call consent prompts for safe-to-automate writes (account refresh only). Requires read-only=false.",
+          "format": "string",
+          "isRequired": false,
+          "isSecret": false,
+          "default": "false"
+        }
+      ]
+    }
+  ]
+}

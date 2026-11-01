@@ -39,6 +39,9 @@ Already done for this repository; repeat only if it is moved or renamed.
    - `release tags: admins create`: restrict creations, repository admins
      bypass.
 
+4. Repository presentation (**Settings -> General -> Social preview**): upload
+   `docs/assets/social-preview.png` (1280x640). GitHub has no API for this.
+
 ## Cutting a release
 
 1. **Bump the version** in a PR:
@@ -106,9 +109,16 @@ Jobs:
   `.mcpb` to the GitHub Release. It is the only job with repository write access.
 - `publish` (release only) waits for `pypi` environment approval, then
   publishes to PyPI.
+- `publish-registry` (release only, after `publish`) verifies a pinned
+  `mcp-publisher` with cosign, logs in with GitHub OIDC and publishes
+  `server.json` to the [MCP Registry](https://registry.modelcontextprotocol.io).
+  The registry confirms ownership through the `mcp-name:` comment in
+  `README.md`, so that line must ship in the PyPI description. It retries
+  while the new PyPI release propagates.
 
 After publishing, `uvx nz-openbank-mcp` and `pip install nz-openbank-mcp`
-resolve the new version. Plugin users pick up the new pin on their next
+resolve the new version, and the registry lists it under
+`io.github.thatskiff33/nz-openbank-mcp`. Plugin users pick up the new pin on their next
 marketplace update. Desktop users download the new `.mcpb` from
 https://github.com/thatskiff33/nz-openbank-mcp/releases.
 

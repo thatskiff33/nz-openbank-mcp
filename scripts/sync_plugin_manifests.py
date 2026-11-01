@@ -32,6 +32,7 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
+REGISTRY_SCHEMA = "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json"
 BASE = ROOT / "plugin" / "plugin.base.toml"
 PLUGIN_DIR = "plugin"
 CODEX_MCP = "codex-mcp.json"
@@ -272,6 +273,43 @@ def mcpb_manifest(base: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def registry_server(base: dict[str, Any]) -> dict[str, Any]:
+    registry = base["registry"]
+    env = []
+    for setting in base["setting"]:
+        entry: dict[str, Any] = {
+            "name": setting["var"],
+            "description": setting["description"],
+            "format": "string",
+            "isRequired": bool(setting.get("sensitive")),
+            "isSecret": bool(setting.get("sensitive")),
+        }
+        if "default" in setting:
+            entry["default"] = setting["default"]
+        env.append(entry)
+    return {
+        "$schema": REGISTRY_SCHEMA,
+        "name": registry["name"],
+        "title": registry["title"],
+        "description": registry["description"],
+        "version": base["version"],
+        "websiteUrl": base["homepage"],
+        "repository": {"url": base["repository"], "source": "github"},
+        "icons": [{"src": registry["icon"], "mimeType": "image/svg+xml"}],
+        "packages": [
+            {
+                "registryType": "pypi",
+                "registryBaseUrl": "https://pypi.org",
+                "identifier": base["name"],
+                "version": base["version"],
+                "runtimeHint": "uvx",
+                "transport": {"type": "stdio"},
+                "environmentVariables": env,
+            }
+        ],
+    }
+
+
 def render(base: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return {
         ".claude-plugin/marketplace.json": claude_marketplace(base),
@@ -286,6 +324,7 @@ def render(base: dict[str, Any]) -> dict[str, dict[str, Any]]:
         f"{PLUGIN_DIR}/.grok-plugin/plugin.json": grok_plugin(base),
         f"{PLUGIN_DIR}/{GROK_MCP}": grok_mcp(base),
         "mcpb/manifest.json": mcpb_manifest(base),
+        "server.json": registry_server(base),
     }
 
 
