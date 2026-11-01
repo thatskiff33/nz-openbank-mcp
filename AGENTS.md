@@ -44,10 +44,10 @@ ignores `uv.lock`.
 | `src/nz_openbank_mcp/tools/accounts.py` | `acct_*`: 4 reads, 2 writes (refreshes) |
 | `src/nz_openbank_mcp/tools/transactions.py` | `txn_*`: 5 reads, 1 write (support ticket) |
 | `src/nz_openbank_mcp/tools/identity.py` | `id_*`: 1 read, 1 write (name check) |
-| `src/nz_openbank_mcp/client.py` | `AkahuClient`: async httpx, both auth headers, 3 attempts with backoff |
+| `src/nz_openbank_mcp/client.py` | `AkahuClient`: async httpx, both auth headers, retries only idempotent calls, caps paging at `MAX_PAGES` |
 | `src/nz_openbank_mcp/models.py` | Pydantic models; aliases map Akahu's `_id` and `_account` |
-| `src/nz_openbank_mcp/config.py` | `AkahuConfig` (`AKAHU_*` settings) |
-| `src/nz_openbank_mcp/deps.py` | Shared client (`get_client`, `aclose_client`) |
+| `src/nz_openbank_mcp/config.py` | `AkahuConfig` (`AKAHU_*` settings); `get_config()` reads it once per process |
+| `src/nz_openbank_mcp/deps.py` | Shared client (`get_client`, `aclose_client`, closed by the root server's lifespan) |
 | `src/nz_openbank_mcp/safety.py` | `@require_write_consent` |
 | `src/nz_openbank_mcp/formatting.py` | `format_money`, `mask_account`, `local_date`, `akahu_bound`, `nz_day`, `nz_today`, `parse_iso_date` |
 | `src/nz_openbank_mcp/aio.py` | `pair`: two requests at once; a failure cancels the other and is raised as itself |
@@ -133,6 +133,7 @@ flag is ignored in files.
 
 - `tests/conftest.py` env fixtures: `fake_env` (read-only), `writable_env`
   (writes elicit), `bypass_env` (automatable writes skip the prompt).
+  An autouse fixture clears the `get_config()` cache around every test.
 - `ctx_factory()` builds a mock `Context` whose `elicit()` returns accept,
   decline or cancel.
 - `respx_mock` intercepts Akahu HTTP; `load_fixture("name")` reads

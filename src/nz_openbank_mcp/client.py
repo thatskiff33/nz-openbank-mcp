@@ -4,9 +4,13 @@ Auth model: two headers on every call.
   - Authorization: Bearer <user_token>
   - X-Akahu-Id: <app_token>
 
-Retries: 3 attempts on 5xx and httpx.TransportError, exponential backoff (1s/2s/4s).
-429 honours Retry-After if numeric, otherwise falls back to the default schedule.
-Other 4xx surfaces immediately.
+Retries: idempotent requests (GET, plus calls that opt in) get 3 attempts on
+5xx and httpx.TransportError, with 1s then 2s backoff and no sleep after the
+last attempt. Other requests are sent once, because a timed-out POST may
+already have taken effect. 429 is retried for every request (Akahu did not
+process it), honouring a numeric Retry-After. Other 4xx surfaces immediately.
+
+Paging: transaction iterators stop after MAX_PAGES pages and set `truncated`.
 
 Logging: INFO logs "GET /path -> 200" lines. Auth tokens and API response
 bodies are never logged.
@@ -16,14 +20,15 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from types import TracebackType
 from typing import Any, Self
 from urllib.parse import quote
 
 import httpx
+from fastmcp.exceptions import ToolError
 
-from nz_openbank_mcp.config import AkahuConfig
+from nz_openbank_mcp.config import AkahuConfig, get_config
 from nz_openbank_mcp.models import (
     Account,
     Me,
@@ -40,13 +45,53 @@ logger = logging.getLogger(__name__)
 _MAX_ATTEMPTS = 3
 _BASE_BACKOFF = 1.0
 _MAX_RETRY_AFTER = 60.0
+MAX_PAGES = 20
+
+PageFetcher = Callable[[str | None], Awaitable[tuple[list[Transaction], str | None]]]
+
+
+class TransactionPages:
+    """Async iterator over transactions across cursor pages, capped at MAX_PAGES.
+
+    `truncated` becomes True once iteration stops at the cap with more pages
+    still available.
+    """
+
+    def __init__(self, fetch: PageFetcher) -> None:
+        self._fetch = fetch
+        self.truncated = False
+
+    async def __aiter__(self) -> AsyncIterator[Transaction]:
+        self.truncated = False
+        cursor: str | None = None
+        for _ in range(MAX_PAGES):
+            items, cursor = await self._fetch(cursor)
+            for item in items:
+                yield item
+            if not cursor:
+                return
+        self.truncated = True
+
+
+def _items(data: dict[str, Any], path: str) -> list[Any]:
+    items = data.get("items")
+    if not isinstance(items, list) or not all(isinstance(i, dict) for i in items):
+        raise ToolError(f"Akahu returned an unexpected response for {path}: no items list.")
+    return items
+
+
+def _item(data: dict[str, Any], path: str) -> dict[str, Any]:
+    item = data.get("item")
+    if not isinstance(item, dict):
+        raise ToolError(f"Akahu returned an unexpected response for {path}: no item.")
+    return item
 
 
 class AkahuClient:
     """Thin wrapper around httpx.AsyncClient with auth, retry, and parsing."""
 
     def __init__(self, config: AkahuConfig | None = None) -> None:
-        self.config = config or AkahuConfig()
+        self.config = config or get_config()
         if not self.config.is_configured:
             raise MissingCredentialsError(
                 "AKAHU_APP_TOKEN and AKAHU_USER_TOKEN must both be set before "
@@ -86,15 +131,20 @@ class AkahuClient:
         *,
         params: dict[str, Any] | None = None,
         json: Any = None,
+        idempotent: bool | None = None,
     ) -> dict[str, Any]:
-        """Send one request with retry/backoff. Returns parsed JSON dict."""
-        last_exc: Exception | None = None
+        """Send one request with retry/backoff. Returns the parsed JSON object.
+
+        `idempotent` defaults to True for GET only; it decides whether
+        transport errors and 5xx are retried.
+        """
+        retry_failures = method == "GET" if idempotent is None else idempotent
 
         for attempt in range(_MAX_ATTEMPTS):
+            last_attempt = attempt == _MAX_ATTEMPTS - 1
             try:
                 response = await self._client.request(method, path, params=params, json=json)
             except httpx.TransportError as exc:
-                last_exc = exc
                 logger.warning(
                     "%s %s transport error (%s); attempt %d/%d",
                     method,
@@ -103,21 +153,23 @@ class AkahuClient:
                     attempt + 1,
                     _MAX_ATTEMPTS,
                 )
+                if last_attempt or not retry_failures:
+                    raise
                 await asyncio.sleep(_BASE_BACKOFF * (2**attempt))
                 continue
 
             logger.info("%s %s -> %d", method, path, response.status_code)
 
             if response.status_code < 400:
-                return response.json()  # type: ignore[no-any-return]
+                return self._json_object(response, method, path)
 
-            if response.status_code == 429 and attempt < _MAX_ATTEMPTS - 1:
+            if response.status_code == 429 and not last_attempt:
                 delay = self._retry_after_seconds(response, default=_BASE_BACKOFF * (2**attempt))
                 logger.warning("%s %s rate-limited; sleeping %.1fs", method, path, delay)
                 await asyncio.sleep(delay)
                 continue
 
-            if 500 <= response.status_code < 600 and attempt < _MAX_ATTEMPTS - 1:
+            if 500 <= response.status_code < 600 and retry_failures and not last_attempt:
                 logger.warning(
                     "%s %s server error %d; attempt %d/%d",
                     method,
@@ -131,9 +183,21 @@ class AkahuClient:
 
             response.raise_for_status()
 
-        if last_exc is None:  # pragma: no cover
-            raise RuntimeError("Akahu request retry loop exhausted unexpectedly.")
-        raise last_exc
+        raise RuntimeError("Akahu request retry loop exhausted unexpectedly.")  # pragma: no cover
+
+    @staticmethod
+    def _json_object(response: httpx.Response, method: str, path: str) -> dict[str, Any]:
+        """Parse a success body, which Akahu always sends as a JSON object."""
+        try:
+            data = response.json()
+        except ValueError:
+            data = None
+        if not isinstance(data, dict):
+            raise ToolError(
+                f"Akahu returned an unexpected response for {method} {path} "
+                f"(HTTP {response.status_code}): expected a JSON object."
+            )
+        return data
 
     @staticmethod
     def _retry_after_seconds(response: httpx.Response, *, default: float) -> float:
@@ -160,16 +224,38 @@ class AkahuClient:
 
     async def get_me(self) -> Me:
         data = await self._request("GET", "/me")
-        return Me.model_validate(data["item"])
+        return Me.model_validate(_item(data, "/me"))
 
     async def list_accounts(self) -> list[Account]:
         data = await self._request("GET", "/accounts")
-        return [Account.model_validate(item) for item in data["items"]]
+        return [Account.model_validate(item) for item in _items(data, "/accounts")]
 
     async def get_account(self, account_id: str) -> Account:
-        account = self._path_segment(account_id, name="account_id")
-        data = await self._request("GET", f"/accounts/{account}")
-        return Account.model_validate(data["item"])
+        path = f"/accounts/{self._path_segment(account_id, name='account_id')}"
+        data = await self._request("GET", path)
+        return Account.model_validate(_item(data, path))
+
+    async def _transaction_page(
+        self,
+        path: str,
+        *,
+        start: str | None,
+        end: str | None,
+        cursor: str | None,
+    ) -> tuple[list[Transaction], str | None]:
+        """One page of settled transactions and the next cursor (None on the last page)."""
+        params: dict[str, Any] = {}
+        if start:
+            params["start"] = start
+        if end:
+            params["end"] = end
+        if cursor:
+            params["cursor"] = cursor
+        data = await self._request("GET", path, params=params or None)
+        items = [Transaction.model_validate(item) for item in _items(data, path)]
+        cursor_block = data.get("cursor")
+        next_cursor = cursor_block.get("next") if isinstance(cursor_block, dict) else None
+        return items, next_cursor or None
 
     async def get_transactions(
         self,
@@ -178,55 +264,40 @@ class AkahuClient:
         end: str | None = None,
         cursor: str | None = None,
     ) -> list[Transaction]:
-        params: dict[str, Any] = {}
-        if start:
-            params["start"] = start
-        if end:
-            params["end"] = end
-        if cursor:
-            params["cursor"] = cursor
-        data = await self._request("GET", "/transactions", params=params or None)
-        return [Transaction.model_validate(item) for item in data["items"]]
+        items, _ = await self._transaction_page(
+            "/transactions", start=start, end=end, cursor=cursor
+        )
+        return items
 
     async def get_transaction(self, transaction_id: str) -> Transaction:
-        transaction = self._path_segment(transaction_id, name="transaction_id")
-        data = await self._request("GET", f"/transactions/{transaction}")
-        return Transaction.model_validate(data["item"])
+        path = f"/transactions/{self._path_segment(transaction_id, name='transaction_id')}"
+        data = await self._request("GET", path)
+        return Transaction.model_validate(_item(data, path))
 
-    async def iter_transactions(
+    def iter_transactions(
         self,
         *,
         start: str | None = None,
         end: str | None = None,
-    ) -> AsyncIterator[Transaction]:
-        """Yield transactions across all pages until cursor.next is None."""
-        cursor: str | None = None
-        while True:
-            params: dict[str, Any] = {}
-            if start:
-                params["start"] = start
-            if end:
-                params["end"] = end
-            if cursor:
-                params["cursor"] = cursor
-            data = await self._request("GET", "/transactions", params=params or None)
-            for item in data["items"]:
-                yield Transaction.model_validate(item)
-            next_cursor = (data.get("cursor") or {}).get("next")
-            if not next_cursor:
-                return
-            cursor = next_cursor
+    ) -> TransactionPages:
+        """Transactions across pages, up to MAX_PAGES."""
+        return TransactionPages(
+            lambda cursor: self._transaction_page(
+                "/transactions", start=start, end=end, cursor=cursor
+            )
+        )
 
     async def get_pending_transactions(self) -> list[PendingTransaction]:
         """All pending transactions across the user's connected accounts."""
-        data = await self._request("GET", "/transactions/pending")
-        return [PendingTransaction.model_validate(item) for item in data["items"]]
+        path = "/transactions/pending"
+        data = await self._request("GET", path)
+        return [PendingTransaction.model_validate(item) for item in _items(data, path)]
 
     async def get_account_pending_transactions(self, account_id: str) -> list[PendingTransaction]:
         """Pending transactions for one specific account."""
-        account = self._path_segment(account_id, name="account_id")
-        data = await self._request("GET", f"/accounts/{account}/transactions/pending")
-        return [PendingTransaction.model_validate(item) for item in data["items"]]
+        path = f"/accounts/{self._path_segment(account_id, name='account_id')}/transactions/pending"
+        data = await self._request("GET", path)
+        return [PendingTransaction.model_validate(item) for item in _items(data, path)]
 
     async def get_account_transactions(
         self,
@@ -240,57 +311,45 @@ class AkahuClient:
 
         Returns (items, next_cursor). next_cursor is None on the last page.
         """
-        params: dict[str, Any] = {}
-        if start:
-            params["start"] = start
-        if end:
-            params["end"] = end
-        if cursor:
-            params["cursor"] = cursor
-        account = self._path_segment(account_id, name="account_id")
-        data = await self._request(
-            "GET", f"/accounts/{account}/transactions", params=params or None
-        )
-        items = [Transaction.model_validate(item) for item in data["items"]]
-        next_cursor = (data.get("cursor") or {}).get("next")
-        return items, next_cursor
+        path = f"/accounts/{self._path_segment(account_id, name='account_id')}/transactions"
+        return await self._transaction_page(path, start=start, end=end, cursor=cursor)
 
-    async def iter_account_transactions(
+    def iter_account_transactions(
         self,
         account_id: str,
         *,
         start: str | None = None,
         end: str | None = None,
-    ) -> AsyncIterator[Transaction]:
-        """Yield transactions for one account, transparently paginating."""
-        cursor: str | None = None
-        while True:
-            items, cursor = await self.get_account_transactions(
+    ) -> TransactionPages:
+        """Transactions for one account across pages, up to MAX_PAGES."""
+        return TransactionPages(
+            lambda cursor: self.get_account_transactions(
                 account_id, start=start, end=end, cursor=cursor
             )
-            for item in items:
-                yield item
-            if not cursor:
-                return
+        )
 
     async def get_transactions_by_ids(self, ids: list[str]) -> list[Transaction]:
         """Batch lookup by transaction id.
 
         Akahu wire shape: POST /transactions/ids with body = JSON array of strings.
-        See https://developers.akahu.nz/reference/post_transactions-ids.
+        See https://developers.akahu.nz/reference/post_transactions-ids. A
+        read, so it is retried like a GET.
         """
-        data = await self._request("POST", "/transactions/ids", json=ids)
-        return [Transaction.model_validate(item) for item in data["items"]]
+        path = "/transactions/ids"
+        data = await self._request("POST", path, json=ids, idempotent=True)
+        return [Transaction.model_validate(item) for item in _items(data, path)]
 
     # ---------- write endpoints ----------
 
+    # Refreshes are retried: repeating one inside Akahu's rate-limit window is harmless.
+
     async def refresh_all(self) -> RefreshResult:
-        data = await self._request("POST", "/refresh")
+        data = await self._request("POST", "/refresh", idempotent=True)
         return RefreshResult.model_validate(data)
 
     async def refresh_one(self, account_id: str) -> RefreshResult:
         account = self._path_segment(account_id, name="account_id")
-        data = await self._request("POST", f"/refresh/{account}")
+        data = await self._request("POST", f"/refresh/{account}", idempotent=True)
         return RefreshResult.model_validate(data)
 
     async def report_transaction_issue(

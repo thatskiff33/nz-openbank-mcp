@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -11,7 +13,8 @@ from fastmcp import FastMCP
 from fastmcp.server.auth import AuthProvider
 from key_value.aio.protocols import AsyncKeyValue
 
-from nz_openbank_mcp.config import AKAHU_API_HOST, AkahuConfig, McpHttpConfig, McpOAuthConfig
+from nz_openbank_mcp import deps
+from nz_openbank_mcp.config import AKAHU_API_HOST, McpHttpConfig, McpOAuthConfig, get_config
 from nz_openbank_mcp.http_auth import (
     AllowlistedGoogleOAuthProvider,
     StaticBearerAuthProvider,
@@ -33,12 +36,21 @@ SERVER_INSTRUCTIONS = (
 )
 
 
+@asynccontextmanager
+async def _lifespan(_server: FastMCP[Any]) -> AsyncIterator[dict[str, Any]]:
+    try:
+        yield {}
+    finally:
+        await deps.aclose_client()
+
+
 def build_server(*, auth: AuthProvider | None = None) -> FastMCP[Any]:
     """Construct the root FastMCP server with all sub-servers mounted."""
     mcp: FastMCP[Any] = FastMCP(
         "nz-openbank-mcp",
         instructions=SERVER_INSTRUCTIONS,
         auth=auth,
+        lifespan=_lifespan,
     )
     mcp.mount(accounts.server, namespace="acct")
     mcp.mount(transactions.server, namespace="txn")
@@ -74,7 +86,7 @@ def build_http_server(
 
 def log_startup_banner() -> None:
     """Emit a banner describing the current safety posture."""
-    cfg = AkahuConfig()
+    cfg = get_config()
     host = urlsplit(cfg.base_url).hostname
     if host != AKAHU_API_HOST:
         logger.warning(
@@ -111,14 +123,14 @@ def configure_logging(log_level: str) -> None:
 
 def main() -> None:
     """Entry point used by the `nz-openbank-mcp` console script."""
-    configure_logging(AkahuConfig().log_level)
+    configure_logging(get_config().log_level)
     log_startup_banner()
     build_server().run()
 
 
 def http_main() -> None:
     """Entry point used by the `nz-openbank-mcp-http` console script."""
-    akahu_cfg = AkahuConfig()
+    akahu_cfg = get_config()
     http_cfg = McpHttpConfig()
     configure_logging(akahu_cfg.log_level)
     log_startup_banner()

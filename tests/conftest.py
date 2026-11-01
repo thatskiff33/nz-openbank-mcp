@@ -12,7 +12,17 @@ import pytest
 import pytest_asyncio
 import respx
 
+from nz_openbank_mcp.config import get_config
+
 FIXTURES = Path(__file__).parent / "fixtures"
+
+
+@pytest.fixture(autouse=True)
+def _fresh_config() -> Iterator[None]:
+    """Each test sets its own AKAHU_* env, so the process-wide config cache must not leak."""
+    get_config.cache_clear()
+    yield
+    get_config.cache_clear()
 
 
 def load_fixture(name: str) -> dict[str, Any]:

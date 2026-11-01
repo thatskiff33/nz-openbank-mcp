@@ -41,7 +41,7 @@ from mcp.types import (
 from mcp_types.version import MODERN_PROTOCOL_VERSIONS
 from pydantic import BaseModel
 
-from nz_openbank_mcp.config import AkahuConfig
+from nz_openbank_mcp.config import get_config
 
 logger = logging.getLogger(__name__)
 
@@ -221,7 +221,7 @@ def require_write_consent(
 
         @wraps(fn)
         async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
-            cfg = AkahuConfig()
+            cfg = get_config()
             if cfg.read_only:
                 raise ReadOnlyError(
                     "Write operations are disabled. To enable: set "
