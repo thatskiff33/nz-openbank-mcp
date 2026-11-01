@@ -208,13 +208,24 @@ async def test_report_transaction_issue_duplicate_uses_other_id(
 
 async def test_get_pending_transactions(akahu_client: Any, respx_mock: respx.MockRouter) -> None:
     respx_mock.get("/transactions/pending").mock(
-        return_value=httpx.Response(200, json=load_fixture("transactions"))
+        return_value=httpx.Response(200, json=load_fixture("pending_transactions"))
     )
     txns = await akahu_client.get_pending_transactions()
-    assert len(txns) == 3
+    assert [t.account for t in txns] == ["acc_chq_001", "acc_sav_002"]
+    assert txns[0].meta.card_suffix == "0000"
 
 
 async def test_get_account_pending_transactions(
+    akahu_client: Any, respx_mock: respx.MockRouter
+) -> None:
+    respx_mock.get("/accounts/acc_chq_001/transactions/pending").mock(
+        return_value=httpx.Response(200, json=load_fixture("pending_transactions"))
+    )
+    txns = await akahu_client.get_account_pending_transactions("acc_chq_001")
+    assert len(txns) == 2
+
+
+async def test_get_account_pending_transactions_empty(
     akahu_client: Any, respx_mock: respx.MockRouter
 ) -> None:
     respx_mock.get("/accounts/acc_chq_001/transactions/pending").mock(

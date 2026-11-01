@@ -1,0 +1,27 @@
+{
+  "success": true,
+  "items": [
+    {
+      "_user": "user_synthetic_001",
+      "_account": "acc_chq_001",
+      "_connection": "conn_synthetic_001",
+      "updated_at": "2026-10-21T12:30:00.000Z",
+      "date": "2026-10-21T12:28:37.000Z",
+      "description": "PENDING - DEMO CAFE",
+      "amount": -5.5,
+      "type": "CREDIT CARD",
+      "meta": {"card_suffix": "0000"}
+    },
+    {
+      "_user": "user_synthetic_001",
+      "_account": "acc_sav_002",
+      "_connection": "conn_synthetic_001",
+      "updated_at": "2026-10-17T11:05:00.000Z",
+      "date": "2026-10-17T11:00:00.000Z",
+      "description": "PENDING - DEMO TRANSFER",
+      "amount": 20,
+      "type": "TRANSFER",
+      "meta": {}
+    }
+  ]
+}
