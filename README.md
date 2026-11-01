@@ -32,7 +32,7 @@ off until you turn writes on.
 | `acct_refresh_all_accounts` | yes | Ask Akahu to fetch fresh data for every account |
 | `acct_refresh_account` | yes | Ask Akahu to fetch fresh data for one account |
 | `txn_report_transaction_issue` | yes | Open a support ticket with Akahu about a transaction |
-| `id_verify_name` | yes | Check a name against the account holder; needs an extra scope (see [Limits](#limits)) and may be charged per call |
+| `id_verify_name` | yes | Check a name against the account holder; needs an extra scope (see [Limits](https://github.com/thatskiff33/nz-openbank-mcp#limits)) and may be charged per call |
 
 There are no spending reports, budgets or forecasts built in. The assistant
 works those out from the transactions, which keeps the server small and easy
@@ -106,9 +106,9 @@ export AKAHU_USER_TOKEN="$(secret-tool lookup service akahu-user-token)"
 export AKAHU_APP_TOKEN="$(secret-tool lookup service akahu-app-token)"
 ```
 
-In Codex, Grok Build and the Cursor CLI, an `AKAHU_READ_ONLY` or
-`AKAHU_AUTOMATION_BYPASS` already exported in the starting shell overrides the
-safe defaults.
+In Codex, Grok Build and Cursor, an `AKAHU_READ_ONLY` or
+`AKAHU_AUTOMATION_BYPASS` already set in the environment the host starts in
+overrides the safe defaults.
 
 Codex:
 
