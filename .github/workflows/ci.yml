@@ -25,6 +25,8 @@ concurrency:
 # uv caches are saved only by main, scheduled and manual runs; PRs restore them.
 env:
   UV_VERSION: "0.13.5"
+  # cursor/plugins commit whose schemas/ validate the Cursor manifests.
+  CURSOR_PLUGINS_SHA: ae5650febf4320793844c12c4adaa937f417f8da
 
 jobs:
   changes:
@@ -62,8 +64,13 @@ jobs:
               - 'plugin/**'
               - 'mcpb/**'
               - '.claude-plugin/**'
+              - '.agents/**'
+              - '.cursor-plugin/**'
+              - '.grok-plugin/**'
               - 'pyproject.toml'
+              - 'src/nz_openbank_mcp/__init__.py'
               - 'scripts/check_packaging.py'
+              - 'scripts/sync_plugin_manifests.py'
             docs:
               - '**/*.md'
               - 'docs/**'
@@ -227,8 +234,28 @@ jobs:
         with:
           version: ${{ env.UV_VERSION }}
           enable-cache: false
+      - name: generated manifests match plugin/plugin.base.toml
+        run: uv run --no-project python scripts/sync_plugin_manifests.py --check
       - name: manifests and version lockstep
         run: uv run --no-project python scripts/check_packaging.py
+      - name: Cursor manifests against Cursor's published schemas
+        env:
+          SCHEMAS: https://raw.githubusercontent.com/cursor/plugins/${{ env.CURSOR_PLUGINS_SHA }}/schemas
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/plugin.schema.json" "$SCHEMAS/plugin.schema.json"
+          curl -fsSL -o "$RUNNER_TEMP/marketplace.schema.json" "$SCHEMAS/marketplace.schema.json"
+          uvx check-jsonschema==0.33.0 --schemafile "$RUNNER_TEMP/plugin.schema.json" plugin/.cursor-plugin/plugin.json
+          uvx check-jsonschema==0.33.0 --schemafile "$RUNNER_TEMP/marketplace.schema.json" .cursor-plugin/marketplace.json
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - name: Claude Code plugin and marketplace validators
+        run: |
+          npx -y @anthropic-ai/claude-code@2.1.316 plugin validate ./plugin
+          npx -y @anthropic-ai/claude-code@2.1.316 plugin validate .
+      - name: Desktop Extension manifest validator
+        run: npx -y @anthropic-ai/mcpb@2.1.2 validate mcpb/manifest.json
       - name: build sdist and wheel
         run: uv build
       - name: wheel smoke import

@@ -3,10 +3,11 @@
 Releases go to PyPI and GitHub Releases from `.github/workflows/release.yml`,
 authenticated with **Trusted Publishing** (OIDC). No API tokens are stored.
 
-The Claude Code plugin (`plugin/.mcp.json`) and the Desktop Extension
+Every host plugin under `plugin/` and the Desktop Extension
 (`mcpb/manifest.json`) launch `uvx --from nz-openbank-mcp==X.Y.Z nz-openbank-mcp`,
-pinned to the release version. `scripts/check_packaging.py` fails CI if a pin
-drifts from `pyproject.toml`.
+pinned to the release version. They are generated from `plugin/plugin.base.toml`
+by `scripts/sync_plugin_manifests.py`, which takes the version from
+`pyproject.toml`; CI fails if a generated file is stale.
 
 ## One-time setup
 
@@ -40,12 +41,14 @@ Already done for this repository; repeat only if it is moved or renamed.
 
 ## Cutting a release
 
-1. **Bump the version** in a PR. These must match, and CI enforces it:
+1. **Bump the version** in a PR:
    - `pyproject.toml` `[project] version`
-   - `plugin/.claude-plugin/plugin.json` `version`
-   - `mcpb/manifest.json` `version`
-   - the `nz-openbank-mcp==X.Y.Z` pin in `plugin/.mcp.json` and in
-     `mcpb/manifest.json` `server.mcp_config.args`
+   - `src/nz_openbank_mcp/__init__.py` `__version__`
+   - then regenerate every manifest and launch pin:
+
+     ```bash
+     uv run --no-project python scripts/sync_plugin_manifests.py
+     ```
 
    Once merged, the plugin on `main` points at a version PyPI does not have
    yet, so finish the release promptly.

@@ -51,6 +51,7 @@ does not require PRs to be up to date with `main`.
 
 ```bash
 uv run ruff format --check .                     # formatting (enforced in CI)
+uv run --no-project python scripts/sync_plugin_manifests.py  # regenerate host manifests
 uv run --no-project python scripts/check_packaging.py  # manifests + version lockstep
 uv run --no-project python scripts/check_md_links.py   # repo-relative Markdown links
 uvx --from actionlint-py==1.7.12.25 actionlint && uvx zizmor==1.31.1 --offline .github/
@@ -190,65 +191,65 @@ Three channels, same code:
 
 1. **Python package** on PyPI (`uvx nz-openbank-mcp`) - works in any MCP
    host. The package source is `src/nz_openbank_mcp/`.
-2. **Claude Code marketplace plugin** (`/plugin marketplace add thatskiff33/nz-openbank-mcp`) -
-   this repo is its own marketplace via `.claude-plugin/marketplace.json`,
-   which points at the plugin files in `plugin/`. **Claude Code only** -
-   Claude Desktop has no UI to set marketplace-plugin `userConfig` values
-   (anthropics/claude-code#39455, #39827).
-3. **Claude Desktop Extension (.mcpb)** - delivery wrapper around the same
-   package for Claude Desktop. Overlay files live at `mcpb/` inside this
-   repo; the bundle is packed by CI and attached to each GitHub Release as
-   `nz-openbank-mcp-X.Y.Z.mcpb`.
+2. **Host plugins** for Claude Code, Codex, Cursor and Grok Build. `plugin/`
+   is one plugin directory with a manifest per host, and this repo is a
+   marketplace for each host. Claude Desktop cannot set marketplace-plugin
+   `userConfig` values (anthropics/claude-code#39455, #39827), so Desktop users
+   take channel 3.
+3. **Claude Desktop Extension (.mcpb)** - `mcpb/manifest.json` plus
+   `mcpb/.mcpbignore` (excludes `*.md`), packed by the release workflow and
+   attached to each GitHub Release as `nz-openbank-mcp-X.Y.Z.mcpb`.
 
-The Claude Code plugin overlay is **three files**:
+**Every manifest is generated.** `plugin/plugin.base.toml` holds the shared
+metadata and one `[[setting]]` per `AKAHU_*` variable;
+`scripts/sync_plugin_manifests.py` writes the files below with the version
+from `pyproject.toml`. Edit the base file (or the generator), re-run it, and
+commit the output. CI runs it with `--check` and fails on drift.
 
-- `plugin/.claude-plugin/plugin.json` - manifest. Declares `userConfig` for
-  the two Akahu tokens (`sensitive: true`) and the two safety flags (defaults
-  preserve the read-only/no-bypass posture).
-- `plugin/.mcp.json` - launch spec. Runs the package via `uvx` and injects each
-  `userConfig` value into the matching `AKAHU_*` env var via
-  `${user_config.KEY}` substitution. The package's pydantic-settings
-  layer reads those env vars exactly as it does outside the plugin.
-- `plugin/README.md` - end-user install/setup notes for the marketplace path.
+| Host | Manifest | Launch spec | Marketplace index |
+| --- | --- | --- | --- |
+| Claude Code | `plugin/.claude-plugin/plugin.json` | `plugin/.mcp.json` | `.claude-plugin/marketplace.json` |
+| Codex | `plugin/.codex-plugin/plugin.json` | `plugin/codex-mcp.json` | `.agents/plugins/marketplace.json` |
+| Cursor | `plugin/.cursor-plugin/plugin.json` | inline `mcpServers` | `.cursor-plugin/marketplace.json` |
+| Grok Build | `plugin/.grok-plugin/plugin.json` | `plugin/grok-mcp.json` | `.grok-plugin/marketplace.json` |
+| Claude Desktop | `mcpb/manifest.json` | `server.mcp_config` | GitHub Release asset |
 
-The Desktop Extension overlay is **three files** under `mcpb/`:
+Credentials per host (no committed file ever holds a value):
 
-- `mcpb/manifest.json` - MCPB spec v0.3 manifest. Mirrors the plugin manifest
-  but uses snake_case `user_config` and nests the launch spec under
-  `server.mcp_config` (same `uvx` invocation, same
-  `${user_config.KEY}` env substitution).
-- `mcpb/.mcpbignore` - excludes `*.md` from the packed bundle.
-- `mcpb/README.md` - short developer-facing note. End-user install docs live
-  in the main `README.md`.
+- **Claude Code / Desktop Extension:** prompt at install, OS keychain,
+  `${user_config.KEY}` substitution. Plugin uses camelCase `userConfig`;
+  `.mcpb` uses snake_case `user_config`.
+- **Codex:** `env_vars` forwards the named variables from the environment
+  Codex was started in. There is no secret prompt for plugin servers. Unset
+  optional settings fall back to the server's own defaults.
+- **Cursor:** `${VAR}` filled from plugin `variables` (Plugins -> Configure),
+  falling back to the process environment. Schema defaults are not applied
+  and an unset `${VAR}` passes through literally, so the launch spec uses
+  `${VAR:-default}`.
+- **Grok Build:** `${VAR:-default}` expanded from Grok's environment. Grok
+  ignores inline `mcpServers` in its manifest, so it points at a file.
 
-The two plugin systems use **different naming conventions**: marketplace
-plugins use `userConfig` (camelCase) at the top level of `plugin.json`;
-Desktop Extensions use `user_config` (snake_case) at the top level of
-`manifest.json`. The `${user_config.KEY}` substitution syntax inside env
-blocks is identical across both.
+Host constraints the layout depends on:
 
-Credential UX: both paths prompt at install, store secrets in the OS
-keychain (macOS Keychain on macOS, Windows Credential Manager on Windows),
-and re-inject them at MCP launch. No shell env, no `.env`, no wrapper
-script. Adding a new env-configurable knob means **three coordinated
-edits**: a `userConfig` entry in `plugin/.claude-plugin/plugin.json`, a
-matching `${user_config.KEY}` line in `plugin/.mcp.json`, AND a parallel
-`user_config` entry plus `server.mcp_config.env` line in `mcpb/manifest.json`.
+- No `plugin/plugin.json` or `plugin/mcp.json`: Codex, Cursor and Grok would
+  treat them as a portable Agent Plugin ahead of the per-host manifests.
+- No root `.mcp.json` (it conflicts with project-scope auto-detection when
+  developing locally; `.gitignore` rule `/.mcp.json` is root-anchored).
+- Cursor names the server `plugin-<name>-akahu`; a `displayName` replaces
+  `<name>`, so the Cursor manifest has none.
 
-The repo root must stay free of `.mcp.json` (it would conflict with
-project-scope auto-detection when developing locally). The `.gitignore`
-rule `/.mcp.json` is anchored to root so the plugin's file at
-`plugin/.mcp.json` stays tracked.
+`scripts/check_packaging.py` enforces the cross-host invariants: pinned
+launch, placeholder-only env, safe defaults, Codex forwarding exactly the
+declared variables, and every marketplace pointing at `plugin/`.
 
-Release flow is documented in `PUBLISHING.md`. Summary: bump the version in
-`pyproject.toml`, `plugin/.claude-plugin/plugin.json` and `mcpb/manifest.json`
-plus the `nz-openbank-mcp==X.Y.Z` launch pins in `plugin/.mcp.json` and
-`mcpb/manifest.json` (`scripts/check_packaging.py` enforces all five). Merge,
-tag the merge commit `vX.Y.Z`, run `gh workflow run release.yml --ref vX.Y.Z`
-for the TestPyPI dry run, then publish the GitHub Release and approve the
-`pypi` environment. `ci-gate` requires a green `ci.yml` push run on `main`
-for the tagged commit. Trusted Publishing (OIDC) handles PyPI and TestPyPI;
-`GITHUB_TOKEN` attaches the wheel, sdist and `.mcpb` to the Release.
+Release flow is documented in `PUBLISHING.md`. Summary: bump `version` in
+`pyproject.toml` and `__version__` in `src/nz_openbank_mcp/__init__.py`, run
+`scripts/sync_plugin_manifests.py`, merge, tag the merge commit `vX.Y.Z`, run
+`gh workflow run release.yml --ref vX.Y.Z` for the TestPyPI dry run, then
+publish the GitHub Release and approve the `pypi` environment. `ci-gate`
+requires a green `ci.yml` push run on `main` for the tagged commit. Trusted
+Publishing (OIDC) handles PyPI and TestPyPI; `GITHUB_TOKEN` attaches the
+wheel, sdist and `.mcpb` to the Release.
 
 ## Style conventions (from user's global instructions)
 

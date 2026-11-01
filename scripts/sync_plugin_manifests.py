@@ -44,10 +44,11 @@ def load_base() -> dict[str, Any]:
     pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     base["version"] = pyproject["project"]["version"]
     for setting in base["setting"]:
-        if setting["key"] != setting["var"].lower():
-            raise SystemExit(f"plugin.base.toml: key {setting['key']!r} must be {setting['var'].lower()!r}")
+        var = setting["var"]
+        if setting["key"] != var.lower():
+            raise SystemExit(f"plugin.base.toml: key {setting['key']!r} must be {var.lower()!r}")
         if not setting.get("sensitive") and "default" not in setting:
-            raise SystemExit(f"plugin.base.toml: {setting['var']} needs a default or sensitive = true")
+            raise SystemExit(f"plugin.base.toml: {var} needs a default or sensitive = true")
     return base
 
 
