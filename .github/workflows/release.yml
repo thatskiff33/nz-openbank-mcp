@@ -255,7 +255,18 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.sha }}
           persist-credentials: false
+
+      - name: assert server.json version matches the tag
+        run: |
+          version="$(jq -r '.version' server.json)"
+          package="$(jq -r '.packages[0].version' server.json)"
+          tag="${GITHUB_REF_NAME#v}"
+          if [ "$version" != "$tag" ] || [ "$package" != "$tag" ]; then
+            echo "server.json version $version / package $package != tag $tag"
+            exit 1
+          fi
 
       - name: install cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
