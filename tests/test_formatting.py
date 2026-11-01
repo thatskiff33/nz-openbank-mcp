@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from datetime import UTC, datetime
 from decimal import Decimal
 
@@ -118,11 +119,10 @@ def test_mask_account_fails_closed_on_other_formats(raw: str, masked: str) -> No
         (datetime(2026, 6, 17, 12, 0), "2026-06-18"),  # naive is UTC, not NZ local
     ],
 )
+@pytest.mark.skipif(not hasattr(time, "tzset"), reason="time.tzset is POSIX only")
 def test_local_date_uses_nz_calendar(
     stamp: datetime, expected: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    import time
-
     from nz_openbank_mcp.formatting import local_date
 
     # A machine clock east of UTC exposes any use of system local time.

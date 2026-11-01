@@ -9,6 +9,7 @@
   <a href="https://github.com/thatskiff33/nz-openbank-mcp/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/coverage-100%25-2dd4bf" alt="Coverage 100%"></a>
   <a href="https://github.com/thatskiff33/nz-openbank-mcp/blob/main/LICENSE"><img src="https://img.shields.io/github/license/thatskiff33/nz-openbank-mcp?color=2dd4bf" alt="License Apache-2.0"></a>
   <a href="https://github.com/thatskiff33/nz-openbank-mcp/releases/latest"><img src="https://img.shields.io/github/v/release/thatskiff33/nz-openbank-mcp?color=2dd4bf&label=release" alt="Latest release"></a>
+  <a href="https://scorecard.dev/viewer/?uri=github.com/thatskiff33/nz-openbank-mcp"><img src="https://api.scorecard.dev/projects/github.com/thatskiff33/nz-openbank-mcp/badge" alt="OpenSSF Scorecard"></a>
   <a href="https://glama.ai/mcp/servers/thatskiff33/nz-openbank-mcp"><img src="https://glama.ai/mcp/servers/thatskiff33/nz-openbank-mcp/badges/score.svg" alt="Glama MCP server score"></a>
 </p>
 
@@ -232,6 +233,20 @@ Desktop instead of the extension, merge it into the config file and restart:
 - Windows: `%APPDATA%\Claude\claude_desktop_config.json`
 - Linux: `~/.config/Claude/claude_desktop_config.json`
 
+### Docker
+
+Each release is also published as a multi-arch image (amd64 and arm64), running
+as a non-root user with read-only mode on:
+
+```bash
+docker run -i --rm -e AKAHU_USER_TOKEN -e AKAHU_APP_TOKEN ghcr.io/thatskiff33/nz-openbank-mcp
+```
+
+`-e NAME` with no value passes the variable through from your shell, so the
+tokens stay out of the command line. For a JSON-configured client, use
+`"command": "docker"` with those arguments. For the HTTP server, run
+`nz-openbank-mcp-http` in the image; see the HTTPS guide.
+
 ## Settings
 
 The server reads settings from its process environment, plus an env file only
@@ -323,6 +338,13 @@ rejected.
 - Account and date filters are sent to Akahu; category and amount filters are
   applied after the data arrives. Personal Apps have no finer-grained access
   control, so the token can read everything you connected.
+
+Release files (wheel, sdist and `.mcpb`) carry GitHub build provenance, and
+PyPI uploads come from Trusted Publishing. To check a download:
+
+```bash
+gh attestation verify nz-openbank-mcp-X.Y.Z.mcpb --repo thatskiff33/nz-openbank-mcp
+```
 
 Report vulnerabilities privately through [`SECURITY.md`](https://github.com/thatskiff33/nz-openbank-mcp/blob/main/SECURITY.md).
 

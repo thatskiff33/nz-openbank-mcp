@@ -5,6 +5,8 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
+from tests.conftest import STATE_DIR
+
 BEARER = "http_token_test_0123456789abcdef0123"
 
 OAUTH_ENV_VARS = (
@@ -37,7 +39,7 @@ def clean_oauth_env(monkeypatch: pytest.MonkeyPatch) -> None:
     for key in OAUTH_ENV_VARS:
         monkeypatch.delenv(key, raising=False)
     monkeypatch.setenv("NZ_OPENBANK_MCP_JWT_SIGNING_KEY", SIGNING_KEY)
-    monkeypatch.setenv("NZ_OPENBANK_MCP_STATE_DIR", "/var/lib/nz-openbank-mcp")
+    monkeypatch.setenv("NZ_OPENBANK_MCP_STATE_DIR", STATE_DIR)
 
 
 def test_loads_from_env(fake_env: None) -> None:

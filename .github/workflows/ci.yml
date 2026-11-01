@@ -72,6 +72,8 @@ jobs:
               - 'scripts/check_packaging.py'
               - 'scripts/sync_plugin_manifests.py'
               - 'server.json'
+              - 'Dockerfile'
+              - '.dockerignore'
             docs:
               - '**/*.md'
               - 'docs/**'
@@ -147,15 +149,21 @@ jobs:
       - run: uv run mypy src
 
   test:
-    name: test (${{ matrix.python }})
+    name: test (${{ matrix.os }}, ${{ matrix.python }})
     needs: changes
     if: needs.changes.outputs.python == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
         python: ["3.14", "3.15"]
+        exclude:
+          - os: macos-latest
+            python: "3.15"
+          - os: windows-latest
+            python: "3.15"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -169,11 +177,13 @@ jobs:
           cache-dependency-glob: uv.lock
           save-cache: ${{ github.event_name != 'pull_request' }}
       - run: uv sync --locked --extra dev
+      # POSIX-only branches (file mode checks) cannot be covered on Windows,
+      # so the coverage gate runs on one Linux job.
       - name: pytest with 100% coverage gate
-        if: matrix.python == '3.14'
+        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.14'
         run: uv run pytest
       - name: pytest
-        if: matrix.python != '3.14'
+        if: matrix.os != 'ubuntu-latest' || matrix.python != '3.14'
         run: uv run pytest --no-cov
 
   audit:
@@ -282,10 +292,34 @@ jobs:
       - name: repo-relative Markdown links
         run: uv run --no-project python scripts/check_md_links.py
 
+  image:
+    name: container image builds and serves tools
+    needs: changes
+    if: needs.changes.outputs.packaging == 'true' || needs.changes.outputs.python == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: build
+        run: docker build -t nz-openbank-mcp:ci .
+      - name: stdio smoke test lists 14 tools
+        run: |
+          {
+            echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci","version":"1"}}}'
+            echo '{"jsonrpc":"2.0","method":"notifications/initialized"}'
+            echo '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
+            sleep 5
+          } | timeout 60 docker run -i --rm -e AKAHU_USER_TOKEN=user_token_ci -e AKAHU_APP_TOKEN=app_token_ci nz-openbank-mcp:ci > out.jsonl
+          count=$(jq -s '[.[] | select(.id == 2)][0].result.tools | length' out.jsonl)
+          echo "tools: $count"
+          test "$count" = 14
+
   ci-ok:
     name: ci-ok
     if: always()
-    needs: [changes, lint, types, test, audit, workflow-lint, packaging, docs]
+    needs: [changes, lint, types, test, audit, workflow-lint, packaging, docs, image]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
