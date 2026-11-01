@@ -1,208 +1,134 @@
 # nz-openbank-mcp
 
-Unofficial MCP server for the [Akahu](https://akahu.nz) open-finance API
-(New Zealand). Bring your own Akahu credentials; run locally over stdio by
-default; no hosted backend.
+Ask an AI assistant about your New Zealand bank accounts without handing your
+banking credentials to anyone new. `nz-openbank-mcp` is a Model Context
+Protocol server that talks to [Akahu](https://akahu.nz), the NZ open-finance
+service, using a Personal App you create and control. It runs on your own
+machine, starts read-only, and asks before anything changes.
 
-- **14 tools.** Account & balance reads, settled & pending transaction reads, batch lookup by id, identity read, refresh writes, support-ticket writes, name verification.
-- **Read-only by default.** Every write tool refuses until `AKAHU_READ_ONLY=false`.
-- **Per-call consent for every write.** Each write calls `ctx.elicit()` for confirmation in the client.
-- **Personal Apps only.** App-scoped endpoints, payments, and webhooks are not exposed.
+[PyPI](https://pypi.org/project/nz-openbank-mcp/) ·
+[Releases](https://github.com/thatskiff33/nz-openbank-mcp/releases) ·
+[Security policy](SECURITY.md)
 
-## How it works
+> Unofficial. Not affiliated with or endorsed by Akahu or any bank.
 
-`nz-openbank-mcp` is a thin MCP adapter around Akahu Personal App endpoints:
+## What it can do
 
-1. You create an Akahu Personal App and provide its App Token plus your User
-   Token at runtime.
-2. The server sends Akahu requests with the required dual-header auth model:
-   `Authorization: Bearer <user_token>` and `X-Akahu-Id: <app_token>`.
-3. MCP clients call the server over one of three transports:
-   - local stdio, recommended for Claude Code and Claude Desktop
-   - Streamable HTTP with a static bearer token, for explicitly secured HTTP
-     clients
-   - Streamable HTTP with Google-backed OAuth, for public HTTPS web connectors
-     such as ChatGPT custom connectors or claude.ai custom connectors
-4. Read tools return masked account data. Write tools refuse by default, and
-   still require per-call consent when writes are enabled.
+The server exposes 14 tools. Ten only read; four change something and are
+off until you turn writes on.
 
-In OAuth HTTP mode, this MCP server is both the OAuth authorization server and
-the MCP resource server. Google is only the identity provider used to
-verify the connecting user's Google account. Google does not receive Akahu
-tokens, and connector clients should be pointed at this server's `/mcp` URL,
-not at Google OAuth endpoints.
+| Tool | Writes? | Purpose |
+| --- | --- | --- |
+| `acct_list_accounts` | | Every connected account, with masked numbers and balances |
+| `acct_get_account` | | One account by id |
+| `acct_get_account_balance` | | Just the balance of one account |
+| `acct_get_pending_transactions` | | Unsettled transactions for one account |
+| `txn_get_transactions` | | Settled transactions, filtered by account, dates, category or amount (default 100) |
+| `txn_get_transaction` | | One transaction by id |
+| `txn_get_transactions_by_ids` | | Several transactions in one request |
+| `txn_get_pending_transactions` | | Unsettled transactions across all accounts |
+| `txn_search_transactions` | | Case-insensitive text search over description and merchant (default 50) |
+| `id_get_me` | | The Akahu user's profile |
+| `acct_refresh_all_accounts` | yes | Ask Akahu to fetch fresh data for every account |
+| `acct_refresh_account` | yes | Ask Akahu to fetch fresh data for one account |
+| `txn_report_transaction_issue` | yes | Open a support ticket with Akahu about a transaction |
+| `id_verify_name` | yes | Check a name against the account holder (needs an extra scope, see [Limits](#limits)) |
 
-## Prerequisites
+There are no spending reports, budgets or forecasts built in. The assistant
+works those out from the transactions, which keeps the server small and easy
+to audit.
 
-1. **Akahu Personal App + User token** - register at https://my.akahu.nz/developers
-2. **[`uv`](https://docs.astral.sh/uv/)** for the `uvx` runner (or pip with a Python 3.14+ virtualenv). `uvx` downloads a matching Python automatically.
-3. **[Claude Code](https://docs.claude.com/en/docs/claude-code/overview)**,
-   **[Claude Desktop](https://claude.ai/download)**, Codex, Cursor, Grok Build,
-   or another MCP client
-4. For web custom connectors: a public HTTPS hostname, a Google Cloud project,
-   and a Google OAuth Web application client
+## Get your Akahu tokens
 
-The two recommended install paths below (marketplace plugin for Claude Code, `.mcpb` Desktop Extension for Claude Desktop) prompt for your tokens and store them in your OS keychain. Only the manual paths further down need shell env vars:
+1. Sign in at [my.akahu.nz/developers](https://my.akahu.nz/developers) and
+   create a Personal App.
+2. Connect the bank accounts you want the assistant to see.
+3. Copy the **App Token** (`app_token_...`) and **User Token**
+   (`user_token_...`).
 
-```bash
-export AKAHU_APP_TOKEN="app_token_..."
-export AKAHU_USER_TOKEN="user_token_..."
-# Optional - everything below is the default:
-export AKAHU_READ_ONLY=true
-export AKAHU_AUTOMATION_BYPASS=false
-```
+Treat both like passwords. The install steps below keep them out of project
+files.
 
-## Install in Claude Code
+You also need [`uv`](https://docs.astral.sh/uv/). Every install path runs the
+server with `uvx`, which fetches the pinned release and a matching Python.
 
-### Marketplace plugin (recommended)
+## Install
 
-Tokens prompt at install and are stored in your OS keychain (macOS Keychain on macOS, Windows Credential Manager on Windows). No shell env or `.env` file required; the package stays unchanged on PyPI.
+| Where you use it | How | Where the tokens live |
+| --- | --- | --- |
+| Claude Code | Plugin from this repo's marketplace | OS keychain, prompted at install |
+| Claude Desktop | `.mcpb` Desktop Extension | OS keychain, prompted at install |
+| Codex | Plugin from this repo's marketplace | Environment Codex starts in |
+| Cursor | Plugin from this repo's marketplace | Cursor plugin settings |
+| Grok Build | Plugin from this repo's marketplace | Environment Grok starts in |
+| claude.ai, ChatGPT, grok.com | Self-hosted HTTPS server with OAuth | Your server's environment |
+| Anything else that speaks MCP | `uvx nz-openbank-mcp` | Environment of the client |
 
-Claude Code v2.1.83 or later:
+Every option below starts with `AKAHU_READ_ONLY=true` and
+`AKAHU_AUTOMATION_BYPASS=false`.
+
+### Claude Code
 
 ```text
 /plugin marketplace add thatskiff33/nz-openbank-mcp
 /plugin install nz-openbank-mcp@nz-openbank
 ```
 
-After install, `/mcp` should show `nz-openbank-mcp` connected. See [`plugin/README.md`](plugin/README.md) for the configure / reconfigure / uninstall flow and the full table of prompted values.
+Claude Code asks for both tokens and the two safety settings. `/mcp` should
+then list the server as connected. To change a setting later, open `/plugin`,
+pick the plugin and choose **Configure options**. More detail, including
+updates and removal, is in [`plugin/README.md`](plugin/README.md).
 
-> **Claude Desktop note:** the marketplace plugin path does not work in Claude Desktop today - Desktop has no UI to set marketplace-plugin `userConfig` values ([anthropics/claude-code#39827](https://github.com/anthropics/claude-code/issues/39827), [#39455](https://github.com/anthropics/claude-code/issues/39455)). Use the [Desktop Extension path](#desktop-extension-recommended) below.
+### Claude Desktop
 
-### Manual install
+Download `nz-openbank-mcp-X.Y.Z.mcpb` from the
+[latest release](https://github.com/thatskiff33/nz-openbank-mcp/releases/latest)
+and open it, or use **Settings -> Extensions -> Advanced -> Install
+Extension**. Desktop shows a form for the tokens and settings. To update,
+install the newer `.mcpb`.
 
-> **Prefer the [marketplace plugin path](#marketplace-plugin-recommended) above.** The manual options below exist for users hacking on the server source, pinning a specific git ref, or running in environments without marketplace access. They all require you to manage tokens via shell env vars or `--env` flags.
+The Claude Code plugin does not work in Claude Desktop, because Desktop cannot
+collect plugin settings yet.
 
-#### Option A: remote install via `claude mcp add`
+### Codex, Grok Build
 
-```bash
-claude mcp add nz-openbank \
-  --scope user \
-  --env AKAHU_APP_TOKEN=app_token_... \
-  --env AKAHU_USER_TOKEN=user_token_... \
-  --env AKAHU_READ_ONLY=true \
-  -- uvx nz-openbank-mcp
-```
-
-To run unreleased code from `main` instead, replace the last line with
-`-- uvx --from git+https://github.com/thatskiff33/nz-openbank-mcp nz-openbank-mcp`.
-
-Scope options:
-- `--scope user` - available in every Claude Code project for your user (recommended for personal banking data)
-- `--scope project` - shared via `.mcp.json` checked into the repo (don't use this for tokens)
-- `--scope local` - this project only, not shared (default)
-
-#### Option B: local install via `claude mcp add` (clone + dev loop)
-
-If you want to hack on the server:
+Neither host can prompt for a plugin secret, so the tokens come from the
+environment you start the host in. Read them from your OS secret store rather
+than writing them into a dotfile:
 
 ```bash
-git clone https://github.com/thatskiff33/nz-openbank-mcp.git
-cd nz-openbank-mcp
-uv sync --extra dev
-uv run pytest         # full suite, 100% line + branch coverage
-
-# Wire the local checkout into Claude Code:
-claude mcp add nz-openbank \
-  --scope user \
-  --env AKAHU_APP_TOKEN=app_token_... \
-  --env AKAHU_USER_TOKEN=user_token_... \
-  -- uv --directory "$(pwd)" run nz-openbank-mcp
-```
-
-Restart your Claude Code session after editing source.
-
-#### Option C: pip install from PyPI
-
-Install into a virtualenv:
-
-```bash
-python -m venv ~/.venvs/nz-openbank-mcp
-source ~/.venvs/nz-openbank-mcp/bin/activate   # Windows: ~/.venvs/nz-openbank-mcp/Scripts/activate
-pip install nz-openbank-mcp
-```
-
-Then point Claude Code at the installed console script (use the absolute path):
-
-```bash
-claude mcp add nz-openbank \
-  --scope user \
-  --env AKAHU_APP_TOKEN=app_token_... \
-  --env AKAHU_USER_TOKEN=user_token_... \
-  -- ~/.venvs/nz-openbank-mcp/bin/nz-openbank-mcp
-```
-
-To upgrade later: `~/.venvs/nz-openbank-mcp/bin/pip install --upgrade nz-openbank-mcp` and restart Claude Code.
-
-#### Verify the install
-
-```bash
-claude mcp list                # confirms 'nz-openbank' is registered
-claude mcp get nz-openbank        # shows the resolved command and env
-```
-
-Inside Claude Code, ask: *"What accounts do I have?"* - it should call `nz-openbank_acct_list_accounts` and return masked account details.
-
-## Install in Claude Desktop
-
-### Desktop Extension (recommended)
-
-A `.mcpb` Desktop Extension is attached to every GitHub Release. Claude Desktop auto-generates a settings UI from the bundle's `user_config` schema and persists tokens to Windows Credential Manager / macOS Keychain.
-
-1. Download `nz-openbank-mcp-X.Y.Z.mcpb` from the [latest GitHub Release](https://github.com/thatskiff33/nz-openbank-mcp/releases/latest).
-2. Double-click the file to install (or in Claude Desktop: Settings -> Extensions -> Advanced -> Install Extension).
-3. Fill in the prompted values:
-   - **Akahu User Token** and **Akahu App Token** (sensitive, stored in OS keychain)
-   - **Read-only mode** (default `true` - leave unless you specifically need write tools)
-   - **Automation bypass** (default `false` - leave unless you want to skip consent prompts for account refresh)
-4. Enable the extension. Claude Desktop's MCP indicator should list `nz-openbank-mcp` as connected.
-
-Updates: download the newer `.mcpb` from the Releases page and reinstall. Each bundle launches the PyPI release it was built for (`uvx --from nz-openbank-mcp==X.Y.Z`).
-
-### Manual: `claude_desktop_config.json`
-
-> **Prefer the [Desktop Extension path](#desktop-extension-recommended) above** - it auto-generates the settings UI, stores tokens in your OS keychain, and avoids hand-editing JSON. Use this manual path only if you can't install extensions in your environment.
-
-Copy `examples/claude_desktop_config.json` into your Claude Desktop config and replace the placeholders. The config lives at:
-
-- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
-- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
-- Linux: `~/.config/Claude/claude_desktop_config.json`
-
-Then restart Claude Desktop.
-
-## Install in Codex, Cursor and Grok Build
-
-The same `plugin/` directory is a plugin for each host, and this repo is a
-marketplace for each. Every host launches the pinned PyPI release with
-`AKAHU_READ_ONLY=true` and `AKAHU_AUTOMATION_BYPASS=false` unless you set
-otherwise. In Codex, Grok Build and the Cursor CLI, an `AKAHU_*` value already
-exported in the shell that starts the host counts as setting it.
-
-Codex and Grok Build read the four `AKAHU_*` settings from the environment the
-host was started in; neither has a secret prompt for plugin servers. Load the
-tokens from your OS secret store in the shell that starts the host rather than
-writing them into a dotfile, for example:
-
-```bash
-# macOS Keychain
+# macOS
 export AKAHU_USER_TOKEN="$(security find-generic-password -s akahu-user-token -w)"
 export AKAHU_APP_TOKEN="$(security find-generic-password -s akahu-app-token -w)"
-# Linux Secret Service
+# Linux (libsecret)
 export AKAHU_USER_TOKEN="$(secret-tool lookup service akahu-user-token)"
 export AKAHU_APP_TOKEN="$(secret-tool lookup service akahu-app-token)"
 ```
 
-### Codex
+An `AKAHU_READ_ONLY` or `AKAHU_AUTOMATION_BYPASS` already exported in that
+shell overrides the safe defaults.
+
+Codex:
 
 ```bash
 codex plugin marketplace add thatskiff33/nz-openbank-mcp
 codex plugin add nz-openbank-mcp@nz-openbank
+codex mcp list          # shows the akahu server
 ```
 
-Start Codex from a shell with the tokens set. `codex mcp list` shows the
-`akahu` server; Codex forwards only the four `AKAHU_*` variables to it.
-Update with `codex plugin marketplace upgrade nz-openbank`.
+Codex passes only the four `AKAHU_*` settings through to the server. Update
+with `codex plugin marketplace upgrade nz-openbank`.
+
+Grok Build:
+
+```bash
+grok plugin marketplace add thatskiff33/nz-openbank-mcp
+grok plugin install nz-openbank-mcp --trust
+grok mcp doctor akahu   # should report 14 tools
+```
+
+Grok also loads Claude Code plugins. Install in one of the two, not both, or
+you get two copies of the server.
 
 ### Cursor
 
@@ -210,291 +136,131 @@ Update with `codex plugin marketplace upgrade nz-openbank`.
 agent plugin marketplace add https://github.com/thatskiff33/nz-openbank-mcp
 ```
 
-Then install **nz-openbank-mcp** from **Customize** in Cursor (or `/plugins`
-in the Cursor CLI) and set `AKAHU_USER_TOKEN` and `AKAHU_APP_TOKEN` under
-**Plugins -> Configure**. Values set there are stored by Cursor, not in the
-repo. `AKAHU_READ_ONLY` and `AKAHU_AUTOMATION_BYPASS` default to `true` and
-`false` when left unset. The server appears as
-`plugin-nz-openbank-mcp-akahu`.
+Install **nz-openbank-mcp** from **Customize** (or `/plugins` in the Cursor
+CLI), then enter the two tokens under **Plugins -> Configure**. Cursor stores
+them, not the repo. Leave the safety settings empty to keep the defaults. The
+server shows up as `plugin-nz-openbank-mcp-akahu`. To try a local checkout, start the
+Cursor CLI with `--plugin-dir /path/to/nz-openbank-mcp/plugin`; it then reads
+unset settings from its own environment.
 
-To try a local checkout instead, run the Cursor CLI with
-`--plugin-dir /path/to/nz-openbank-mcp/plugin`; unset plugin variables then
-fall back to the CLI's environment.
+### Web connectors (claude.ai, ChatGPT, grok.com)
 
-### Grok Build
+Web assistants can only reach servers on the public internet. Run the HTTP
+entrypoint behind HTTPS with OAuth: this server acts as the OAuth
+authorization server, Google confirms who is signing in, and only the Google
+accounts or Workspace domains you allow get through. Google never sees your
+Akahu tokens.
+
+Setup, the Google client, the redirect allowlist and hardening are covered in
+[docs/public-https-streamable-http.md](docs/public-https-streamable-http.md),
+with a systemd example under [`deploy/linux-systemd/`](deploy/linux-systemd/).
+grok.com's connector callback,
+`https://grok.com/connectors-oauth-exchange-code/`, is not in the default
+redirect list. `NZ_OPENBANK_MCP_ALLOWED_REDIRECT_URIS` replaces that list, so
+include any default entries you still need alongside it.
+
+### Any other MCP client
+
+Point the client at this command and give it the settings as environment
+variables:
 
 ```bash
-grok plugin marketplace add thatskiff33/nz-openbank-mcp
-grok plugin install nz-openbank-mcp --trust
+uvx --from nz-openbank-mcp==0.1.1 nz-openbank-mcp
 ```
 
-Start Grok from a shell with the tokens set. `grok mcp doctor akahu` should
-report 14 tools. Grok also loads Claude Code plugins, so install the plugin in
-one of the two hosts, not both, to avoid two copies of the server.
+[`examples/claude_desktop_config.json`](examples/claude_desktop_config.json)
+shows the shape most JSON-configured clients expect.
 
-### grok.com connectors
+## Settings
 
-grok.com connects to remote MCP servers only, so use the
-[HTTP OAuth mode](docs/public-https-streamable-http.md) on a public HTTPS host, then
-add a custom connector at grok.com/connectors with the server's `/mcp` URL.
-Grok's connector callback is not in the default redirect allowlist. Its
-approval screen lists the callback as
-`https://grok.com/connectors-oauth-exchange-code/`; add it with
-`NZ_OPENBANK_MCP_ALLOWED_REDIRECT_URIS`, keeping any default entries you still
-need (the variable replaces the defaults).
+The server reads its settings from environment variables only. It does not
+pick up a `.env` file from the working directory.
 
-## Run standalone (no client)
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `AKAHU_USER_TOKEN` | (required) | Your User Token |
+| `AKAHU_APP_TOKEN` | (required) | Your Personal App's App Token |
+| `AKAHU_READ_ONLY` | `true` | Refuse every write tool |
+| `AKAHU_AUTOMATION_BYPASS` | `false` | Skip the confirmation prompt for the two refresh tools |
+| `AKAHU_REQUEST_TIMEOUT` | `10` | Seconds per Akahu request (1 to 120) |
+| `AKAHU_LOG_LEVEL` | `INFO` | Standard Python log level |
+| `AKAHU_ENV_FILE` | (unset) | Absolute path to an env file to load; on Linux and macOS it must be yours (or root's) and not writable by group or others |
+| `AKAHU_BASE_URL` | `https://api.akahu.io/v1` | Must stay on `api.akahu.io` unless the next setting is on |
+| `AKAHU_ALLOW_CUSTOM_BASE_URL` | `false` | Allow another API host; honoured only from the process environment, never from an env file |
+
+The HTTP entrypoint has its own `NZ_OPENBANK_MCP_*` settings, listed in
+[`.env.example`](.env.example) and the HTTPS guide.
+
+## How writes are guarded
+
+Three checks sit in front of every write tool:
+
+1. **Read-only switch.** With `AKAHU_READ_ONLY=true` the tool refuses before
+   any request leaves your machine.
+2. **Confirmation.** With writes on, the server asks you to approve each call
+   through your assistant's confirmation prompt. Declining or dismissing it
+   cancels the call.
+3. **Narrow bypass.** `AKAHU_AUTOMATION_BYPASS=true` skips the prompt only for
+   `acct_refresh_all_accounts` and `acct_refresh_account`, which just ask Akahu
+   to re-sync. Each skipped prompt is logged, the startup banner lists these
+   tools, and the server will not start with the bypass on while read-only is
+   also on. Support tickets and name checks always ask.
+
+## Limits
+
+Akahu Personal Apps cannot reach app-scoped endpoints, so this server has no
+tools for categories (transactions carry theirs inline), the list of supported
+banks, payments or webhooks.
+
+`id_verify_name` and the parties endpoint need a scope you enable for your
+Personal App at [my.akahu.nz/developers](https://my.akahu.nz/developers);
+without it Akahu answers 403.
+
+Transactions carry no currency of their own and are shown in NZD. For a
+foreign-currency account, read the account's currency with
+`acct_get_account`.
+
+## Privacy
+
+- Account numbers are masked to the bank code, the last four account digits
+  and the suffix.
+- Tokens are never logged. Balances and transaction contents are not logged; request paths, which can
+  include Akahu account or transaction ids, are logged with their status.
+- Over stdio, the server's only network traffic is to `api.akahu.io` (plus
+  `uvx` downloading the package). HTTP mode adds Google for sign-in.
+- Filters such as date, amount and category are applied after Akahu returns
+  the data; Personal Apps have no finer-grained access control.
+
+Report vulnerabilities privately through [`SECURITY.md`](SECURITY.md).
+
+## Development
 
 ```bash
-# Via uvx (zero-install):
-uvx nz-openbank-mcp
-
-# Via pip (after `pip install nz-openbank-mcp` in your venv):
-nz-openbank-mcp
-
-# From a local checkout:
-uv run nz-openbank-mcp
-```
-
-The server reads configuration from its process environment only. It never
-loads a `.env` file from the working directory. When started through the
-`nz-openbank-mcp` console scripts this also covers FastMCP's own `FASTMCP_*`
-settings; the `fastmcp` CLI loads them before the package, so prefix it with
-`FASTMCP_ENV_FILE=/dev/null` as shown below. To use an env file (see
-`.env.example`), pass its absolute path; on Linux and macOS the file must not be
-writable by group or others and must be owned by you or root:
-
-```bash
-AKAHU_ENV_FILE=/abs/path/to/nz-openbank.env uv run nz-openbank-mcp
-```
-
-`AKAHU_BASE_URL` must point at `https://api.akahu.io` unless
-`AKAHU_ALLOW_CUSTOM_BASE_URL=true` is set in the process environment; that flag
-is ignored inside an env file, and the server logs a warning at startup when a
-custom host is in use. Set `AKAHU_ENV_FILE` and `AKAHU_ALLOW_CUSTOM_BASE_URL`
-only in your own shell or host config, never in project files checked into a
-repository you cloned.
-
-The server speaks MCP over stdio. Inspect tool calls with:
-
-```bash
+git clone https://github.com/thatskiff33/nz-openbank-mcp.git
+cd nz-openbank-mcp
+uv sync --extra dev
+uv run pytest                 # 100% line and branch coverage is required
+uv run ruff check . && uv run mypy src
 FASTMCP_ENV_FILE=/dev/null uv run fastmcp dev src/nz_openbank_mcp/server.py
 ```
 
-An authenticated Streamable HTTP entrypoint exists for explicitly secured
-reverse-proxy deployments. Bearer mode is the default and keeps Claude Code,
-Claude Desktop, and Claude API HTTP clients working:
+To use a local checkout from Claude Code:
 
 ```bash
-export NZ_OPENBANK_MCP_AUTH_MODE=bearer
-export NZ_OPENBANK_MCP_BEARER_TOKEN="$(openssl rand -base64 48)"  # 32+ characters
-export NZ_OPENBANK_MCP_HTTP_HOST=127.0.0.1
-export NZ_OPENBANK_MCP_HTTP_PORT=8091
-export NZ_OPENBANK_MCP_HTTP_PATH=/mcp
-uv run nz-openbank-mcp-http
+claude mcp add nz-openbank --scope user \
+  --env AKAHU_APP_TOKEN=app_token_... --env AKAHU_USER_TOKEN=user_token_... \
+  -- uv --directory "$(pwd)" run nz-openbank-mcp
 ```
 
-OAuth mode is the recommended public connector mode for ChatGPT and Claude web
-custom connectors. The MCP server is the OAuth authorization server and resource
-server; Google is only the identity provider.
+The host plugin manifests are generated. Edit `plugin/plugin.base.toml`, then
+run `uv run --no-project python scripts/sync_plugin_manifests.py`. Releases
+are described in [`PUBLISHING.md`](PUBLISHING.md); further operator guides are
+in [`docs/`](docs/).
 
-```bash
-export NZ_OPENBANK_MCP_AUTH_MODE=oauth
-export NZ_OPENBANK_MCP_GOOGLE_CLIENT_ID="client-id.apps.googleusercontent.com"
-export NZ_OPENBANK_MCP_GOOGLE_CLIENT_SECRET="client-secret"
-export NZ_OPENBANK_MCP_PUBLIC_BASE_URL="https://mcp.example.com/openbank-mcp"
-export NZ_OPENBANK_MCP_ALLOWED_USERS="you@example.com"
-# Or allow a primary Google Workspace domain (matched on the hd claim, not the email):
-# export NZ_OPENBANK_MCP_ALLOWED_DOMAINS="example.com"
-export NZ_OPENBANK_MCP_JWT_SIGNING_KEY="$(openssl rand -base64 48)"  # 32+ bytes, keep stable
-export NZ_OPENBANK_MCP_STATE_DIR="$HOME/.local/state/nz-openbank-mcp"
-export NZ_OPENBANK_MCP_HTTP_HOST=127.0.0.1
-export NZ_OPENBANK_MCP_HTTP_PORT=8091
-export NZ_OPENBANK_MCP_HTTP_PATH=/mcp
-uv run nz-openbank-mcp-http
-```
+## License and disclaimer
 
-OAuth mode refuses to start without the signing key and an absolute state
-directory. Connector redirect URIs are limited to the Claude and ChatGPT
-callbacks plus loopback; see
-[docs/public-https-streamable-http.md](docs/public-https-streamable-http.md)
-for the list and `NZ_OPENBANK_MCP_ALLOWED_REDIRECT_URIS`.
+Licensed under Apache-2.0; see [`LICENSE`](LICENSE).
 
-### Google OAuth setup for web connectors
-
-Create the OAuth client in Google Cloud Console before starting the public
-OAuth deployment:
-
-1. Create or select a Google Cloud project.
-2. Open **Google Auth Platform -> Branding** or **OAuth consent screen**.
-3. Configure the app name, support email, authorized domain, and contact email.
-   Add homepage, privacy policy, and terms URLs when publishing beyond a
-   private test audience.
-4. Open **Audience**. Use **Internal** only for a Google Workspace-only app.
-   Use **External** with **Testing** and explicit test users for a private or
-   pilot deployment. Move to **In production** only when the app is ready for
-   broader use and any required verification is complete.
-5. Open **Clients -> Create client** and choose **Web application**.
-6. Add this exact Authorized redirect URI, replacing the host and path with
-   your `NZ_OPENBANK_MCP_PUBLIC_BASE_URL`:
-
-```text
-https://mcp.example.com/openbank-mcp/auth/callback
-```
-
-7. Store the client ID and client secret only in the runtime environment or a
-   host secret manager. Do not commit `client_secret.json`, `.env` files, or raw
-   secret values.
-8. Set `NZ_OPENBANK_MCP_ALLOWED_USERS` or `NZ_OPENBANK_MCP_ALLOWED_DOMAINS` so only
-   expected Google accounts can receive connector tokens from this server.
-
-The Google OAuth client must be a Web application client because this server
-stores a client secret and receives authorization-code callbacks. Google
-requires the redirect URI sent during login to exactly match one of the
-Authorized redirect URIs configured on that client.
-
-In ChatGPT or claude.ai web, open Settings -> Connectors -> Add custom
-connector, paste `https://mcp.example.com/openbank-mcp/mcp`, then complete the
-Google login and consent flow. Do not point connector clients at Google OAuth
-endpoints directly.
-
-Do not expose this banking MCP server publicly without app-level auth, HTTPS,
-read-only defaults, an OAuth allowlist or bearer token, and a documented
-threat-model exception.
-
-Official Google references:
-
-- [Using OAuth 2.0 for Web Server Applications](https://developers.google.com/identity/protocols/oauth2/web-server)
-- [Manage OAuth Clients](https://support.google.com/cloud/answer/6158849)
-- [Submitting your app for verification](https://support.google.com/cloud/answer/13461325)
-- [Manage App Audience](https://support.google.com/cloud/answer/15549945)
-
-## Architecture
-
-```
-+--- root FastMCP server (server.py) -----------+
-| mounts 3 sub-servers, prints safety banner    |
-+----+---------------+--------------+-----------+
-     |               |              |
-   accounts      transactions    identity
-     |               |              |
-     +----- AkahuClient (httpx + retry) ----+
-                          |
-                          v
-                  https://api.akahu.io/v1
-                  (dual-header auth)
-```
-
-Every write tool is decorated with `@require_write_consent` from `safety.py`.
-`rg "@require_write_consent"` enumerates writes; `rg "automatable=True"`
-enumerates the bypass-eligible subset.
-
-## Read-only by default
-
-The server starts with `AKAHU_READ_ONLY=true`. Every write tool refuses with
-this message:
-
-> Write operations are disabled. To enable: set `AKAHU_READ_ONLY=false` in the
-> server's environment and restart the MCP server. Each write will require your explicit
-> confirmation through Claude (or set `AKAHU_AUTOMATION_BYPASS=true` for the
-> automatable subset only).
-
-When writes ARE enabled, every write still calls `ctx.elicit()` to ask you in
-Claude's UI before firing.
-
-### Automation bypass
-
-Setting `AKAHU_AUTOMATION_BYPASS=true` *together with* `AKAHU_READ_ONLY=false`
-skips the elicit prompt for tools marked `automatable=True`:
-
-| Tool                                    | Bypass-eligible? |
-| --------------------------------------- | ---------------- |
-| `accounts/refresh_all_accounts`         | YES              |
-| `accounts/refresh_account`              | YES              |
-| `transactions/report_transaction_issue` | NO               |
-| `identity/verify_name`                  | NO               |
-
-Each bypassed call logs at INFO with the tool name. The server prints a startup
-banner listing the bypass-eligible tools.
-
-Setting `AKAHU_AUTOMATION_BYPASS=true` with `AKAHU_READ_ONLY=true` is rejected
-at startup.
-
-## Tool reference
-
-### Read tools (10)
-
-**`accounts/`**
-- `list_accounts` - all connected accounts (masked, formatted balances)
-- `get_account(account_id)` - single account details
-- `get_account_balance(account_id)` - balance only
-- `get_pending_transactions(account_id)` - not-yet-settled debits/credits for one account
-
-**`transactions/`**
-- `get_transactions(account_id?, start_date?, end_date?, category?, min_amount?, max_amount?, limit=100)`
-- `get_transaction(transaction_id)`
-- `get_transactions_by_ids(ids)` - batch fetch by Akahu txn id (useful for webhook follow-up)
-- `get_pending_transactions` - not-yet-settled across all accounts
-- `search_transactions(query, limit=50)` - substring across description + merchant.name
-
-**`identity/`**
-- `get_me`
-
-### Write tools (4)
-
-- `accounts/refresh_all_accounts` *(bypass-eligible)*
-- `accounts/refresh_account(account_id)` *(bypass-eligible)*
-- `transactions/report_transaction_issue(transaction_id, issue_type, fields?, comment?, other_transaction_id?)` *(always elicits)*
-- `identity/verify_name(family_name, given_name?, middle_name?, initials?, account_id?)` *(always elicits)* - requires Personal-App scope grant; without it Akahu returns 403
-
-## Privacy & security
-
-- Account numbers are masked by preserving the bank code, suffix, and final
-  four account digits.
-- Tokens and API response bodies are never logged.
-- All filters are applied client-side after the API call returns. Akahu has no field-level access control for Personal Apps.
-- The server runs entirely on your machine. The only outbound traffic is to `https://api.akahu.io/v1`.
-
-## Personal Apps only
-
-This server uses the Akahu Personal App model (per-user OAuth). The following
-endpoints are not exposed because they are
-[app-scoped](https://developers.akahu.nz/reference/api-akahu-io-authentication#app-scoped-endpoints)
-and unreachable from a Personal App:
-
-- `/categories` - NZFCC category taxonomy (transactions carry their category inline)
-- `/connections` - supported-bank list
-- `/identity/{id}/verify-name` - app-scoped variant; use `identity/verify_name` instead
-
-Full-app features are also out of scope:
-
-- Payments (`make_payment`, `cancel_payment`, etc.)
-- Webhooks (`subscribe_webhook`, etc.)
-
-### Scope-grant gotchas
-
-These user-scoped endpoints require a Personal-App scope toggled at
-https://my.akahu.nz/developers; without the grant they return 403:
-
-- `GET /parties` - counterparty list (not shipped as a tool)
-- `POST /verify/name` and `POST /verify/name/{id}` - shipped as `identity/verify_name`
-
-## Releasing
-
-Releases are published to [PyPI](https://pypi.org/project/nz-openbank-mcp/) and
-[GitHub Releases](https://github.com/thatskiff33/nz-openbank-mcp/releases) (wheel,
-sdist and `.mcpb`) via Trusted Publishing, after a TestPyPI dry run from the
-tag. See [`PUBLISHING.md`](PUBLISHING.md) for the steps.
-
-Report vulnerabilities privately; see [`SECURITY.md`](SECURITY.md).
-
-## Disclaimer
-
-This is an unofficial integration. Not affiliated with Akahu, your bank, or
-any financial institution. Use at your own risk. The maintainers are not
-responsible for any data loss, unauthorised access, or financial impact arising
-from use of this software.
-
-## License
-
-Apache-2.0. See `LICENSE`.
+This software is provided as is. You are responsible for how you use it with
+your financial data. The maintainers accept no liability for data loss,
+unauthorised access or financial loss arising from its use.

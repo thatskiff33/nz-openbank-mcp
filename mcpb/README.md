@@ -1,3 +1,7 @@
-# nz-openbank-mcp (Claude Desktop Extension overlay)
+# mcpb
 
-This directory contains the `.mcpb` (Desktop Extension) overlay served to Claude Desktop. The packed bundle is attached to each GitHub Release; end-user install docs live in the [main README](../README.md). Build steps and release flow are documented in [`PUBLISHING.md`](../PUBLISHING.md).
+Source for the Claude Desktop Extension. `manifest.json` is generated from
+`plugin/plugin.base.toml`; CI packs this directory into
+`nz-openbank-mcp-X.Y.Z.mcpb` and attaches it to each GitHub Release. Install
+steps are in the [main README](../README.md#claude-desktop) and the release
+process in [`PUBLISHING.md`](../PUBLISHING.md).
