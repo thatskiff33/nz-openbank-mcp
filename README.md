@@ -37,7 +37,8 @@ not at Google OAuth endpoints.
 1. **Akahu Personal App + User token** - register at https://my.akahu.nz/developers
 2. **[`uv`](https://docs.astral.sh/uv/)** for the `uvx` runner (or pip with a Python 3.14+ virtualenv). `uvx` downloads a matching Python automatically.
 3. **[Claude Code](https://docs.claude.com/en/docs/claude-code/overview)**,
-   **[Claude Desktop](https://claude.ai/download)**, or another MCP client
+   **[Claude Desktop](https://claude.ai/download)**, Codex, Cursor, Grok Build,
+   or another MCP client
 4. For web custom connectors: a public HTTPS hostname, a Google Cloud project,
    and a Google OAuth Web application client
 
@@ -169,6 +170,78 @@ Copy `examples/claude_desktop_config.json` into your Claude Desktop config and r
 - Linux: `~/.config/Claude/claude_desktop_config.json`
 
 Then restart Claude Desktop.
+
+## Install in Codex, Cursor and Grok Build
+
+The same `plugin/` directory is a plugin for each host, and this repo is a
+marketplace for each. Every host launches the pinned PyPI release with
+`AKAHU_READ_ONLY=true` and `AKAHU_AUTOMATION_BYPASS=false` unless you set
+otherwise. In Codex, Grok Build and the Cursor CLI, an `AKAHU_*` value already
+exported in the shell that starts the host counts as setting it.
+
+Codex and Grok Build read the four `AKAHU_*` settings from the environment the
+host was started in; neither has a secret prompt for plugin servers. Load the
+tokens from your OS secret store in the shell that starts the host rather than
+writing them into a dotfile, for example:
+
+```bash
+# macOS Keychain
+export AKAHU_USER_TOKEN="$(security find-generic-password -s akahu-user-token -w)"
+export AKAHU_APP_TOKEN="$(security find-generic-password -s akahu-app-token -w)"
+# Linux Secret Service
+export AKAHU_USER_TOKEN="$(secret-tool lookup service akahu-user-token)"
+export AKAHU_APP_TOKEN="$(secret-tool lookup service akahu-app-token)"
+```
+
+### Codex
+
+```bash
+codex plugin marketplace add thatskiff33/nz-openbank-mcp
+codex plugin add nz-openbank-mcp@nz-openbank
+```
+
+Start Codex from a shell with the tokens set. `codex mcp list` shows the
+`akahu` server; Codex forwards only the four `AKAHU_*` variables to it.
+Update with `codex plugin marketplace upgrade nz-openbank`.
+
+### Cursor
+
+```bash
+agent plugin marketplace add https://github.com/thatskiff33/nz-openbank-mcp
+```
+
+Then install **nz-openbank-mcp** from **Customize** in Cursor (or `/plugins`
+in the Cursor CLI) and set `AKAHU_USER_TOKEN` and `AKAHU_APP_TOKEN` under
+**Plugins -> Configure**. Values set there are stored by Cursor, not in the
+repo. `AKAHU_READ_ONLY` and `AKAHU_AUTOMATION_BYPASS` default to `true` and
+`false` when left unset. The server appears as
+`plugin-nz-openbank-mcp-akahu`.
+
+To try a local checkout instead, run the Cursor CLI with
+`--plugin-dir /path/to/nz-openbank-mcp/plugin`; unset plugin variables then
+fall back to the CLI's environment.
+
+### Grok Build
+
+```bash
+grok plugin marketplace add thatskiff33/nz-openbank-mcp
+grok plugin install nz-openbank-mcp --trust
+```
+
+Start Grok from a shell with the tokens set. `grok mcp doctor akahu` should
+report 14 tools. Grok also loads Claude Code plugins, so install the plugin in
+one of the two hosts, not both, to avoid two copies of the server.
+
+### grok.com connectors
+
+grok.com connects to remote MCP servers only, so use the
+[HTTP OAuth mode](docs/public-https-streamable-http.md) on a public HTTPS host, then
+add a custom connector at grok.com/connectors with the server's `/mcp` URL.
+Grok's connector callback is not in the default redirect allowlist. Its
+approval screen lists the callback as
+`https://grok.com/connectors-oauth-exchange-code/`; add it with
+`NZ_OPENBANK_MCP_ALLOWED_REDIRECT_URIS`, keeping any default entries you still
+need (the variable replaces the defaults).
 
 ## Run standalone (no client)
 

@@ -1,0 +1,20 @@
+{
+  "name": "nz-openbank",
+  "interface": {
+    "displayName": "NZ Open Banking"
+  },
+  "plugins": [
+    {
+      "name": "nz-openbank-mcp",
+      "source": {
+        "source": "local",
+        "path": "./plugin"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

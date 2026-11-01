@@ -1,0 +1,58 @@
+# Single source for every host plugin manifest, marketplace index and the
+# Desktop Extension manifest. Edit this file, then regenerate:
+#
+#   uv run --no-project python scripts/sync_plugin_manifests.py
+#
+# The version comes from pyproject.toml. CI fails if a generated file drifts.
+
+name = "nz-openbank-mcp"
+display_name = "NZ Akahu MCP"
+description = "Unofficial MCP server for the Akahu open-finance API (NZ). 14 tools, read-only by default, runs locally over stdio."
+short_description = "Akahu open finance (NZ): accounts, transactions, identity"
+server_name = "akahu"
+homepage = "https://github.com/thatskiff33/nz-openbank-mcp"
+repository = "https://github.com/thatskiff33/nz-openbank-mcp"
+license = "Apache-2.0"
+keywords = ["mcp", "akahu", "open-finance", "new-zealand", "banking"]
+category = "Productivity"
+
+[author]
+name = "thatskiff33"
+email = "258212727+thatskiff33@users.noreply.github.com"
+url = "https://github.com/thatskiff33"
+
+[marketplace]
+name = "nz-openbank"
+display_name = "NZ Open Banking"
+description = "MCP server for New Zealand open banking via the Akahu API. Read-by-default, write-with-consent."
+
+# One entry per environment variable the server reads. `key` is the
+# Claude Code / Desktop Extension user-config key; it must equal the
+# lowercased variable name. Optional settings need a default.
+[[setting]]
+var = "AKAHU_USER_TOKEN"
+key = "akahu_user_token"
+title = "Akahu User Token"
+description = "User token from https://my.akahu.nz/developers."
+sensitive = true
+
+[[setting]]
+var = "AKAHU_APP_TOKEN"
+key = "akahu_app_token"
+title = "Akahu App Token"
+description = "App token from https://my.akahu.nz/developers."
+sensitive = true
+
+[[setting]]
+var = "AKAHU_READ_ONLY"
+key = "akahu_read_only"
+title = "Read-only mode"
+description = "Refuse all write tools when 'true'. Leave as 'true' unless you specifically need refresh/verify/report writes."
+default = "true"
+
+[[setting]]
+var = "AKAHU_AUTOMATION_BYPASS"
+key = "akahu_automation_bypass"
+title = "Automation bypass"
+description = "Skip per-call consent prompts for safe-to-automate writes (account refresh only). Requires read-only=false."
+default = "false"

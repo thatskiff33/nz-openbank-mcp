@@ -2,11 +2,14 @@
 
 Checks: every manifest parses as JSON with its required keys, versions match
 pyproject.toml, each launch spec runs the PyPI release pinned to that version,
-each launch-spec env var is injected from the user config key
-of the same name (AKAHU_READ_ONLY <- akahu_read_only) and every declared key is
-injected, the plugin and Desktop Extension declare the same keys, tokens are
-marked sensitive, safety defaults stay read-only, and no root .mcp.json exists.
-Exits non-zero on any failure.
+each Claude Code and Desktop Extension env var is injected from the user config
+key of the same name (AKAHU_READ_ONLY <- akahu_read_only) and every declared key
+is injected, the plugin and Desktop Extension declare the same keys, tokens are
+marked sensitive, and safety defaults stay read-only. For Codex, Cursor and
+Grok: env values are placeholders only (no literal values), Codex forwards
+exactly the declared variables, Cursor and Grok carry the same safe inline
+defaults, and every marketplace index points at plugin/. No root .mcp.json or
+portable plugin/plugin.json may exist. Exits non-zero on any failure.
 """
 
 from __future__ import annotations
@@ -88,6 +91,77 @@ def check_user_config(rel: str, config: dict[str, Any]) -> None:
             fail(f"{rel}: {key} default must be {expected!r}, got {actual!r}")
 
 
+def servers(rel: str, data: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    found = obj(data.get("mcpServers", {}), f"{rel}: mcpServers")
+    if not found:
+        fail(f"{rel}: no MCP servers declared")
+    return {name: obj(server, f"{rel}: {name}") for name, server in found.items()}
+
+
+def check_inline_default_env(rel: str, env: dict[str, Any], keys: set[str]) -> None:
+    expected = {key.upper(): SAFE_DEFAULTS.get(key, "") for key in keys}
+    for var, default in expected.items():
+        want = f"${{{var}:-{default}}}"
+        if env.get(var) != want:
+            fail(f"{rel}: env {var} must be {want!r}, got {env.get(var)!r}")
+    for var in sorted(set(env) - set(expected)):
+        fail(f"{rel}: env {var} is not a declared setting")
+
+
+def check_other_hosts(version: str, keys: set[str]) -> None:
+    variables = {key.upper() for key in keys}
+
+    for rel in (
+        "plugin/.codex-plugin/plugin.json",
+        "plugin/.cursor-plugin/plugin.json",
+        "plugin/.grok-plugin/plugin.json",
+    ):
+        manifest = load(rel)
+        require(rel, manifest, "name", "version", "description", "mcpServers")
+        if manifest.get("version") != version:
+            fail(f"{rel}: version {manifest.get('version')!r} != pyproject.toml {version!r}")
+
+    codex_rel = "plugin/codex-mcp.json"
+    if load("plugin/.codex-plugin/plugin.json").get("mcpServers") != "./codex-mcp.json":
+        fail("plugin/.codex-plugin/plugin.json: mcpServers must be './codex-mcp.json'")
+    for name, server in servers(codex_rel, load(codex_rel)).items():
+        check_launch(f"{codex_rel}: {name}", server, version)
+        if "env" in server:
+            fail(f"{codex_rel}: {name} must not set env; settings come from env_vars only")
+        if sorted(server.get("env_vars", [])) != sorted(variables):
+            fail(f"{codex_rel}: {name} env_vars must be exactly {sorted(variables)}")
+
+    cursor_rel = "plugin/.cursor-plugin/plugin.json"
+    cursor = load(cursor_rel)
+    cursor_variables = obj(cursor.get("variables", {}), cursor_rel)
+    declared = set(obj(cursor_variables.get("properties", {}), cursor_rel))
+    if declared != variables:
+        fail(f"{cursor_rel}: variables must declare exactly {sorted(variables)}")
+    for name, server in servers(cursor_rel, cursor).items():
+        check_launch(f"{cursor_rel}: {name}", server, version)
+        check_inline_default_env(cursor_rel, obj(server.get("env", {}), cursor_rel), keys)
+
+    grok_rel = "plugin/grok-mcp.json"
+    if load("plugin/.grok-plugin/plugin.json").get("mcpServers") != "./grok-mcp.json":
+        fail("plugin/.grok-plugin/plugin.json: mcpServers must be './grok-mcp.json'")
+    for name, server in servers(grok_rel, load(grok_rel)).items():
+        check_launch(f"{grok_rel}: {name}", server, version)
+        check_inline_default_env(grok_rel, obj(server.get("env", {}), grok_rel), keys)
+
+    for rel, key in (
+        (".agents/plugins/marketplace.json", "path"),
+        (".cursor-plugin/marketplace.json", None),
+        (".grok-plugin/marketplace.json", "path"),
+    ):
+        marketplace = load(rel)
+        require(rel, marketplace, "name", "plugins")
+        for entry in marketplace.get("plugins", []):
+            source = obj(entry, rel).get("source")
+            path = obj(source, rel).get(key) if key else source
+            if path not in ("plugin", "./plugin"):
+                fail(f"{rel}: plugin source {path!r} must be the plugin/ directory")
+
+
 def main() -> int:
     pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     version = pyproject["project"]["version"]
@@ -135,8 +209,17 @@ def main() -> int:
         if data.get("version") != version:
             fail(f"{rel}: version {data.get('version')!r} != pyproject.toml {version!r}")
 
+    check_other_hosts(version, set(user_config))
+
+    init = (ROOT / "src" / "nz_openbank_mcp" / "__init__.py").read_text(encoding="utf-8")
+    if f'__version__ = "{version}"' not in init:
+        fail(f"src/nz_openbank_mcp/__init__.py: __version__ != pyproject.toml {version!r}")
+
     if (ROOT / ".mcp.json").exists():
         fail(".mcp.json must not exist at the repo root")
+    for rel in ("plugin/plugin.json", "plugin/mcp.json"):
+        if (ROOT / rel).exists():
+            fail(f"{rel} must not exist; hosts would load it ahead of the per-host manifests")
 
     for msg in errors:
         print(f"error: {msg}", file=sys.stderr)

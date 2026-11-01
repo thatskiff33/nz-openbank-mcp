@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "akahu": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "nz-openbank-mcp==0.1.1",
+        "nz-openbank-mcp"
+      ],
+      "env": {
+        "AKAHU_USER_TOKEN": "${AKAHU_USER_TOKEN:-}",
+        "AKAHU_APP_TOKEN": "${AKAHU_APP_TOKEN:-}",
+        "AKAHU_READ_ONLY": "${AKAHU_READ_ONLY:-true}",
+        "AKAHU_AUTOMATION_BYPASS": "${AKAHU_AUTOMATION_BYPASS:-false}"
+      }
+    }
+  }
+}

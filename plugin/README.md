@@ -1,6 +1,6 @@
-# nz-openbank-mcp (Claude Code plugin)
+# nz-openbank-mcp (plugin)
 
-This plugin packages [`nz-openbank-mcp`](https://github.com/thatskiff33/nz-openbank-mcp) for installation in **Claude Code** via this repo's plugin marketplace. It exposes 14 MCP tools for the Akahu open-finance API (NZ), with credentials prompted at install and stored in your OS keychain (macOS Keychain on macOS, Windows Credential Manager on Windows). See the [main repo README](https://github.com/thatskiff33/nz-openbank-mcp#readme) for tool reference and architecture details.
+This plugin packages [`nz-openbank-mcp`](https://github.com/thatskiff33/nz-openbank-mcp) for **Claude Code**, **Codex**, **Cursor** and **Grok Build** via this repo's plugin marketplaces. It exposes 14 MCP tools for the Akahu open-finance API (NZ). In Claude Code, credentials are prompted at install and stored in your OS keychain (macOS Keychain on macOS, Windows Credential Manager on Windows). See the [main repo README](https://github.com/thatskiff33/nz-openbank-mcp#readme) for tool reference and architecture details.
 
 > **Claude Desktop users:** use the `.mcpb` Desktop Extension instead - see the [main README](https://github.com/thatskiff33/nz-openbank-mcp#install-in-claude-desktop). Claude Desktop has no UI to configure marketplace-plugin `userConfig` values ([anthropics/claude-code#39455](https://github.com/anthropics/claude-code/issues/39455), [#39827](https://github.com/anthropics/claude-code/issues/39827)).
 
@@ -55,6 +55,18 @@ The plugin launches the PyPI release pinned in `.mcp.json` (`uvx --from nz-openb
 ```
 
 Removes the userConfig values from your OS keychain.
+
+## Other hosts
+
+```bash
+codex plugin marketplace add thatskiff33/nz-openbank-mcp && codex plugin add nz-openbank-mcp@nz-openbank
+agent plugin marketplace add https://github.com/thatskiff33/nz-openbank-mcp   # Cursor, then install from Customize
+grok plugin marketplace add thatskiff33/nz-openbank-mcp && grok plugin install nz-openbank-mcp --trust
+```
+
+Codex and Grok Build read `AKAHU_USER_TOKEN` and `AKAHU_APP_TOKEN` from the environment they were started in; Cursor reads them from **Plugins -> Configure**. See the [main README](https://github.com/thatskiff33/nz-openbank-mcp#install-in-codex-cursor-and-grok-build).
+
+Every manifest in this directory is generated from `plugin.base.toml` by `scripts/sync_plugin_manifests.py`; edit the base file, not the JSON.
 
 ## Manual install (non-plugin path)
 

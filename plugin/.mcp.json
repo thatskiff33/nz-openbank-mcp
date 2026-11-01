@@ -2,7 +2,11 @@
   "mcpServers": {
     "akahu": {
       "command": "uvx",
-      "args": ["--from", "nz-openbank-mcp==0.1.1", "nz-openbank-mcp"],
+      "args": [
+        "--from",
+        "nz-openbank-mcp==0.1.1",
+        "nz-openbank-mcp"
+      ],
       "env": {
         "AKAHU_USER_TOKEN": "${user_config.akahu_user_token}",
         "AKAHU_APP_TOKEN": "${user_config.akahu_app_token}",
