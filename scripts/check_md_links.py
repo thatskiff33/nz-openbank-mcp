@@ -1,8 +1,10 @@
 """Check repo-relative links in tracked Markdown files (offline).
 
-External URLs, mailto links and in-page anchors are skipped. A relative link
-fails when its target file or directory does not exist. Exits non-zero on any
-broken link.
+Covers inline links and images, reference-style link definitions, and HTML
+href/src attributes. Links with a URL scheme (https:, mailto:, ...) and
+in-page anchors are skipped; fragments on file links are ignored. Fenced code
+blocks and inline code spans are not scanned. A relative link fails when its
+target file or directory does not exist. Exits non-zero on any broken link.
 """
 
 from __future__ import annotations
@@ -14,9 +16,12 @@ from pathlib import Path
 from urllib.parse import unquote
 
 ROOT = Path(__file__).resolve().parent.parent
-LINK = re.compile(r"!?\[[^\]]*\]\(\s*<?([^)\s>]+)>?(?:\s+\"[^\"]*\")?\s*\)")
-FENCE = re.compile(r"^\s*(```|~~~)")
-SKIP = ("http://", "https://", "mailto:", "#")
+INLINE = re.compile(r"\]\(\s*(<[^>]*>|[^)\s]+)")
+REFERENCE_DEF = re.compile(r"^\s{0,3}\[[^\]]+\]:\s*(<[^>]*>|\S+)")
+HTML_ATTR = re.compile(r"""\b(?:href|src)\s*=\s*["']([^"']+)["']""", re.IGNORECASE)
+CODE_SPAN = re.compile(r"(`+).*?\1")
+FENCE = re.compile(r"^\s{0,3}(`{3,}|~{3,})")
+SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
 
 
 def tracked_markdown() -> list[Path]:
@@ -26,22 +31,34 @@ def tracked_markdown() -> list[Path]:
     return [ROOT / line for line in out.splitlines() if line]
 
 
+def targets(line: str) -> list[str]:
+    text = CODE_SPAN.sub("", line)
+    found = INLINE.findall(text) + HTML_ATTR.findall(text)
+    ref = REFERENCE_DEF.match(text)
+    if ref:
+        found.append(ref.group(1))
+    return [t.strip("<>") for t in found]
+
+
 def broken_links(path: Path) -> list[str]:
     broken: list[str] = []
-    in_fence = False
+    fence: str | None = None
     for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-        if FENCE.match(line):
-            in_fence = not in_fence
+        opener = FENCE.match(line)
+        if opener:
+            marker = opener.group(1)
+            if fence is None:
+                fence = marker
+            elif marker[0] == fence[0] and len(marker) >= len(fence):
+                fence = None
             continue
-        if in_fence:
+        if fence is not None:
             continue
-        for target in LINK.findall(line):
-            if target.startswith(SKIP):
+        for target in targets(line):
+            if not target or target.startswith("#") or SCHEME.match(target):
                 continue
             rel = unquote(target.split("#", 1)[0])
-            if not rel:
-                continue
-            resolved = (ROOT / rel.lstrip("/")) if rel.startswith("/") else path.parent / rel
+            resolved = ROOT / rel.lstrip("/") if rel.startswith("/") else path.parent / rel
             if not resolved.exists():
                 broken.append(f"{path.relative_to(ROOT)}:{lineno}: {target}")
     return broken

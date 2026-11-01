@@ -53,11 +53,11 @@ does not require PRs to be up to date with `main`.
 uv run ruff format --check .                     # formatting (enforced in CI)
 uv run --no-project python scripts/check_packaging.py  # manifests + version lockstep
 uv run --no-project python scripts/check_md_links.py   # repo-relative Markdown links
-uvx --from actionlint-py actionlint && uvx zizmor --offline .github/  # workflows
+uvx --from actionlint-py==1.7.12.25 actionlint && uvx zizmor==1.31.1 --offline .github/
 ```
 
 `release.yml` runs only on `release: published` and refuses to build unless
-the tagged commit has a successful `ci-ok` check. Actions are pinned to full
+the tagged commit is on `main` and has a successful `ci.yml` push run there. Actions are pinned to full
 commit SHAs; Dependabot (`.github/dependabot.yml`) proposes weekly grouped
 updates for Actions and uv.
 
@@ -238,8 +238,9 @@ rule `/.mcp.json` is anchored to root so the plugin's file at
 Release flow is documented in `PUBLISHING.md`. Summary: bump three files
 in lockstep (`pyproject.toml`, `plugin/.claude-plugin/plugin.json`,
 `mcpb/manifest.json`), tag `vX.Y.Z`, push, publish GitHub Release. The
-workflow's `test`, `build` (PyPI), and `build-mcpb` jobs all gate on a
-version-matches-tag assertion. Trusted Publishing (OIDC) handles PyPI auth;
+workflow's `ci-gate` job requires a green `ci.yml` run on `main` for the
+tagged commit; `build` (PyPI) and `build-mcpb` gate on a version-matches-tag
+assertion. Trusted Publishing (OIDC) handles PyPI auth;
 `GITHUB_TOKEN` handles `gh release upload` for the `.mcpb`. Marketplace
 clients re-pull the plugin from the tagged commit; no separate marketplace
 release is required. Desktop users redownload the `.mcpb` from the Releases

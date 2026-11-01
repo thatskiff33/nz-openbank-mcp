@@ -23,26 +23,45 @@ concurrency:
 
 jobs:
   ci-gate:
-    name: ci passed for the tagged commit
+    name: ci passed on main for the tagged commit
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
     permissions:
-      checks: read # read ci-ok check runs for the tagged commit
+      contents: read # compare the tagged commit with main
+      actions: read # read ci.yml workflow runs
     steps:
-      - name: require a successful ci-ok check run
+      - name: require the tagged commit to be on main
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           SHA: ${{ github.sha }}
         run: |
-          conclusion=$(gh api "repos/$REPO/commits/$SHA/check-runs?check_name=ci-ok" \
-            --jq '[.check_runs[] | select(.status == "completed")]
-                  | sort_by(.completed_at) | last | .conclusion // "missing"')
-          echo "latest ci-ok conclusion for $SHA: $conclusion"
-          if [ "$conclusion" != "success" ]; then
-            echo "Release blocked: ci.yml has no successful ci-ok run for this commit."
+          status=$(gh api "repos/$REPO/compare/main...$SHA" --jq .status)
+          echo "tagged commit $SHA relative to main: $status"
+          if [ "$status" != "identical" ] && [ "$status" != "behind" ]; then
+            echo "Release blocked: the tagged commit is not on main."
             exit 1
           fi
+
+      - name: require a successful full ci.yml run on main for the commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          # A release published right after a merge may race main's CI run, so
+          # wait for it rather than failing early.
+          for attempt in $(seq 1 50); do
+            runs=$(gh api "repos/$REPO/actions/workflows/ci.yml/runs?head_sha=$SHA&branch=main&event=push&per_page=100")
+            success=$(jq '[.workflow_runs[] | select(.conclusion == "success")] | length' <<<"$runs")
+            pending=$(jq '[.workflow_runs[] | select(.status != "completed")] | length' <<<"$runs")
+            echo "attempt $attempt: successful=$success in-progress=$pending"
+            if [ "$success" -gt 0 ]; then exit 0; fi
+            if [ "$pending" -eq 0 ]; then break; fi
+            sleep 30
+          done
+          echo "Release blocked: no successful ci.yml push run on main for $SHA."
+          exit 1
 
   build:
     name: build sdist + wheel
@@ -85,8 +104,6 @@ jobs:
     needs: ci-gate
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    permissions:
-      contents: write # gh release upload attaches the .mcpb to this Release
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -113,12 +130,32 @@ jobs:
           version="${GITHUB_REF_NAME#v}"
           npx -y @anthropic-ai/mcpb@2.1.2 pack mcpb "dist/nz-openbank-mcp-${version}.mcpb"
 
+      - name: upload bundle artefact
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: mcpb
+          path: dist/*.mcpb
+          if-no-files-found: error
+
+  upload-mcpb:
+    name: attach .mcpb to the GitHub Release
+    needs: build-mcpb
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write # gh release upload attaches the .mcpb to this Release
+    steps:
+      - name: download bundle artefact
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: mcpb
+          path: dist/
+
       - name: upload to GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          version="${GITHUB_REF_NAME#v}"
-          gh release upload "${GITHUB_REF_NAME}" "dist/nz-openbank-mcp-${version}.mcpb" \
+          gh release upload "${GITHUB_REF_NAME}" dist/*.mcpb \
             --repo "$GITHUB_REPOSITORY" --clobber
 
   publish:

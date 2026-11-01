@@ -22,9 +22,9 @@ concurrency:
       || format('ci-{0}-{1}', github.event_name, github.run_id) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# uv caches are saved only by main, scheduled and manual runs; PRs restore them.
 env:
   UV_VERSION: "0.13.5"
-  # Caches are saved only by main, scheduled and manual runs; PRs restore them.
 
 jobs:
   changes:
@@ -52,6 +52,7 @@ jobs:
               - 'pyproject.toml'
               - 'uv.lock'
               - 'ruff.toml'
+              - 'scripts/**'
             deps:
               - 'pyproject.toml'
               - 'uv.lock'
@@ -69,7 +70,7 @@ jobs:
               - 'deploy/**'
               - 'scripts/check_md_links.py'
 
-      - name: resolve outputs (full run outside PRs)
+      - name: resolve outputs (full run outside PRs or on workflow changes)
         id: out
         env:
           EVENT: ${{ github.event_name }}
@@ -82,9 +83,16 @@ jobs:
           for name in python deps workflows packaging docs; do
             upper="${name^^}"
             value="${!upper}"
-            if [ "$EVENT" != "pull_request" ]; then value=true; fi
-            echo "$name=${value:-false}" >> "$GITHUB_OUTPUT"
-            echo "$name=${value:-false}"
+            if [ "$EVENT" = "pull_request" ] && [ -z "$value" ]; then
+              echo "paths-filter produced no '$name' output"
+              exit 1
+            fi
+            # A workflow change can break any job, so it runs them all.
+            if [ "$EVENT" != "pull_request" ] || [ "$WORKFLOWS" = "true" ]; then
+              value=true
+            fi
+            echo "$name=$value" >> "$GITHUB_OUTPUT"
+            echo "$name=$value"
           done
 
   lint:
@@ -199,6 +207,7 @@ jobs:
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: ${{ env.UV_VERSION }}
+          enable-cache: false
       - name: actionlint
         run: uvx --from actionlint-py==1.7.12.25 actionlint -color
       - name: zizmor
@@ -217,6 +226,7 @@ jobs:
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: ${{ env.UV_VERSION }}
+          enable-cache: false
       - name: manifests and version lockstep
         run: uv run --no-project python scripts/check_packaging.py
       - name: build sdist and wheel
@@ -240,6 +250,7 @@ jobs:
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: ${{ env.UV_VERSION }}
+          enable-cache: false
       - name: repo-relative Markdown links
         run: uv run --no-project python scripts/check_md_links.py
 
