@@ -1,0 +1,251 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "23 17 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # PRs: a new push cancels the stale run. main, schedule and manual runs
+  # get a unique group and are never cancelled.
+  group: >-
+    ${{ github.event_name == 'pull_request'
+      && format('ci-pr-{0}', github.event.pull_request.number)
+      || github.event_name == 'push'
+      && format('ci-main-{0}', github.sha)
+      || format('ci-{0}-{1}', github.event_name, github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  UV_VERSION: "0.13.5"
+
+jobs:
+  changes:
+    name: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read # paths-filter lists PR files through the API
+    outputs:
+      python: ${{ steps.out.outputs.python }}
+      deps: ${{ steps.out.outputs.deps }}
+      workflows: ${{ steps.out.outputs.workflows }}
+      packaging: ${{ steps.out.outputs.packaging }}
+      docs: ${{ steps.out.outputs.docs }}
+    steps:
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: filter
+        if: github.event_name == 'pull_request'
+        with:
+          filters: |
+            python:
+              - 'src/**'
+              - 'tests/**'
+              - 'pyproject.toml'
+              - 'uv.lock'
+              - 'ruff.toml'
+            deps:
+              - 'pyproject.toml'
+              - 'uv.lock'
+            workflows:
+              - '.github/**'
+            packaging:
+              - 'plugin/**'
+              - 'mcpb/**'
+              - '.claude-plugin/**'
+              - 'pyproject.toml'
+              - 'scripts/check_packaging.py'
+            docs:
+              - '**/*.md'
+              - 'docs/**'
+              - 'deploy/**'
+              - 'scripts/check_md_links.py'
+
+      - name: resolve outputs (full run outside PRs)
+        id: out
+        env:
+          EVENT: ${{ github.event_name }}
+          PYTHON: ${{ steps.filter.outputs.python }}
+          DEPS: ${{ steps.filter.outputs.deps }}
+          WORKFLOWS: ${{ steps.filter.outputs.workflows }}
+          PACKAGING: ${{ steps.filter.outputs.packaging }}
+          DOCS: ${{ steps.filter.outputs.docs }}
+        run: |
+          for name in python deps workflows packaging docs; do
+            upper="${name^^}"
+            value="${!upper}"
+            if [ "$EVENT" != "pull_request" ]; then value=true; fi
+            echo "$name=${value:-false}" >> "$GITHUB_OUTPUT"
+            echo "$name=${value:-false}"
+          done
+
+  lint:
+    name: lint
+    needs: changes
+    if: needs.changes.outputs.python == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - run: uv sync --locked --extra dev
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+
+  types:
+    name: types
+    needs: changes
+    if: needs.changes.outputs.python == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - run: uv sync --locked --extra dev
+      - run: uv run mypy src
+
+  test:
+    name: test (${{ matrix.python }})
+    needs: changes
+    if: needs.changes.outputs.python == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.14", "3.15"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ matrix.python }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - run: uv sync --locked --extra dev
+      - name: pytest with 100% coverage gate
+        if: matrix.python == '3.14'
+        run: uv run pytest
+      - name: pytest
+        if: matrix.python != '3.14'
+        run: uv run pytest --no-cov
+
+  audit:
+    name: audit
+    needs: changes
+    if: needs.changes.outputs.deps == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - run: uv sync --locked --extra dev
+      - name: pip-audit on the lock
+        run: |
+          uv export --frozen --no-emit-project --all-extras --format requirements-txt \
+            | uv run pip-audit --strict --disable-pip --require-hashes -r /dev/stdin
+      - name: bandit
+        run: uv run bandit -q -r src
+
+  workflow-lint:
+    name: workflow-lint
+    needs: changes
+    if: needs.changes.outputs.workflows == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: ${{ env.UV_VERSION }}
+      - name: actionlint
+        run: uvx --from actionlint-py==1.7.12.25 actionlint -color
+      - name: zizmor
+        run: uvx zizmor==1.31.1 --offline --format plain .github/
+
+  packaging:
+    name: packaging
+    needs: changes
+    if: needs.changes.outputs.packaging == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: ${{ env.UV_VERSION }}
+      - name: manifests and version lockstep
+        run: uv run --no-project python scripts/check_packaging.py
+      - name: build sdist and wheel
+        run: uv build
+      - name: wheel smoke import
+        run: |
+          wheel=$(ls dist/*.whl)
+          uv run --isolated --no-project --with "$wheel" \
+            python -c "from nz_openbank_mcp.server import build_server; build_server()"
+
+  docs:
+    name: docs
+    needs: changes
+    if: needs.changes.outputs.docs == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: ${{ env.UV_VERSION }}
+      - name: repo-relative Markdown links
+        run: uv run --no-project python scripts/check_md_links.py
+
+  ci-ok:
+    name: ci-ok
+    if: always()
+    needs: [changes, lint, types, test, audit, workflow-lint, packaging, docs]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: every job succeeded or was skipped by path filtering
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "results: $RESULTS"
+          for result in $RESULTS; do
+            case "$result" in
+              success|skipped) ;;
+              *) echo "a required job ended as: $result"; exit 1 ;;
+            esac
+          done

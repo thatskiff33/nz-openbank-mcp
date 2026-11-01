@@ -80,9 +80,10 @@ https://test.pypi.org and duplicate the publish job in the workflow with
 
 The Release event triggers the workflow:
 
-- `test`: ruff + mypy + pytest (100% coverage gate)
+- `ci-gate`: requires a successful `ci-ok` check from `ci.yml` on the tagged
+  commit, so tag a commit on `main` whose CI run is green
 - `build`: `uv build` produces sdist + wheel; asserts pyproject version == tag
-- `build-mcpb`: `npx -y @anthropic-ai/mcpb pack mcpb` produces
+- `build-mcpb`: `npx -y @anthropic-ai/mcpb@<pinned> pack mcpb` produces
   `dist/nz-openbank-mcp-X.Y.Z.mcpb`; asserts manifest version == tag; uploads
   the bundle to the GitHub Release via `gh release upload`
 - `publish`: pauses on the `pypi` environment for approval (if required

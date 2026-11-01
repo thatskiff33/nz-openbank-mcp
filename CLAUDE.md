@@ -39,6 +39,28 @@ Python is 3.14+. Runtime dependencies carry major-version caps because `uvx`
 ignores `uv.lock` and resolves fresh on every launch; `sse-starlette!=3.4.6`
 excludes a known-bad transitive release.
 
+## CI
+
+`.github/workflows/ci.yml` runs on PRs, pushes to `main`, weekly, and on
+manual dispatch. A `changes` job path-filters PRs so only the affected jobs run
+(lint, types, test on 3.14 and 3.15, audit, workflow-lint, packaging, docs);
+`main`, scheduled and manual runs force every job. The single `ci-ok` job is
+the only required check and passes when each job succeeded or was skipped.
+PR runs cancel stale runs; `main` runs are never cancelled. Branch protection
+does not require PRs to be up to date with `main`.
+
+```bash
+uv run ruff format --check .                     # formatting (enforced in CI)
+uv run --no-project python scripts/check_packaging.py  # manifests + version lockstep
+uv run --no-project python scripts/check_md_links.py   # repo-relative Markdown links
+uvx --from actionlint-py actionlint && uvx zizmor --offline .github/  # workflows
+```
+
+`release.yml` runs only on `release: published` and refuses to build unless
+the tagged commit has a successful `ci-ok` check. Actions are pinned to full
+commit SHAs; Dependabot (`.github/dependabot.yml`) proposes weekly grouped
+updates for Actions and uv.
+
 ## Architecture
 
 ```
