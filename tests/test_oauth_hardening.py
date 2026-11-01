@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import stat
 from pathlib import Path
 from typing import Any
@@ -14,6 +15,7 @@ from starlette.testclient import TestClient
 
 from nz_openbank_mcp.config import DEFAULT_ALLOWED_REDIRECT_URIS, McpHttpConfig, McpOAuthConfig
 from nz_openbank_mcp.http_auth import AllowlistedGoogleOAuthProvider, durable_client_storage
+from tests.conftest import STATE_DIR
 
 SIGNING_KEY = "jwt_signing_key_test_0123456789abcdef"
 
@@ -25,7 +27,7 @@ def _oauth_config(**overrides: Any) -> McpOAuthConfig:
         "public_base_url": "https://mcp.example.com/openbank-mcp",
         "allowed_users": "owner@example.com",
         "jwt_signing_key": SIGNING_KEY,
-        "state_dir": "/var/lib/nz-openbank-mcp",
+        "state_dir": STATE_DIR,
     }
     values.update(overrides)
     return McpOAuthConfig(**values)
@@ -254,7 +256,8 @@ async def test_durable_storage_persists_and_rotates(tmp_path: Path) -> None:
     assert await rotated.get(key="client-1", collection="clients") is None
 
     directory = tmp_path / "oauth-proxy"
-    assert stat.S_IMODE(directory.stat().st_mode) == 0o700
+    if os.name == "posix":
+        assert stat.S_IMODE(directory.stat().st_mode) == 0o700
     stored = b"".join(p.read_bytes() for p in directory.rglob("*") if p.is_file())
     assert b'client-1"}' not in stored
 
@@ -356,7 +359,8 @@ def test_registrations_survive_restart_encrypted(fake_env: None, tmp_path: Path)
     files = [p for p in (tmp_path / "oauth-proxy").rglob("*.json") if "info" not in p.name]
     assert files
     for path in files:
-        assert stat.S_IMODE(path.stat().st_mode) == 0o600
+        if os.name == "posix":
+            assert stat.S_IMODE(path.stat().st_mode) == 0o600
         assert set(json.loads(path.read_text())["value"]) == {
             "__encrypted_data__",
             "__encryption_version__",
