@@ -15,6 +15,8 @@ import respx
 from nz_openbank_mcp.config import get_config
 
 FIXTURES = Path(__file__).parent / "fixtures"
+# A rooted path with no drive is not absolute on Windows.
+STATE_DIR = str(Path("/var/lib/nz-openbank-mcp").absolute())
 
 
 @pytest.fixture(autouse=True)
