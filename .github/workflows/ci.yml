@@ -24,6 +24,7 @@ concurrency:
 
 env:
   UV_VERSION: "0.13.5"
+  # Caches are saved only by main, scheduled and manual runs; PRs restore them.
 
 jobs:
   changes:
@@ -99,8 +100,11 @@ jobs:
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: ${{ env.UV_VERSION }}
+          python-version: "3.14"
           enable-cache: true
+          cache-python: true
           cache-dependency-glob: uv.lock
+          save-cache: ${{ github.event_name != 'pull_request' }}
       - run: uv sync --locked --extra dev
       - run: uv run ruff check .
       - run: uv run ruff format --check .
@@ -118,8 +122,11 @@ jobs:
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: ${{ env.UV_VERSION }}
+          python-version: "3.14"
           enable-cache: true
+          cache-python: true
           cache-dependency-glob: uv.lock
+          save-cache: ${{ github.event_name != 'pull_request' }}
       - run: uv sync --locked --extra dev
       - run: uv run mypy src
 
@@ -142,7 +149,9 @@ jobs:
           version: ${{ env.UV_VERSION }}
           python-version: ${{ matrix.python }}
           enable-cache: true
+          cache-python: true
           cache-dependency-glob: uv.lock
+          save-cache: ${{ github.event_name != 'pull_request' }}
       - run: uv sync --locked --extra dev
       - name: pytest with 100% coverage gate
         if: matrix.python == '3.14'
@@ -164,8 +173,11 @@ jobs:
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: ${{ env.UV_VERSION }}
+          python-version: "3.14"
           enable-cache: true
+          cache-python: true
           cache-dependency-glob: uv.lock
+          save-cache: ${{ github.event_name != 'pull_request' }}
       - run: uv sync --locked --extra dev
       - name: pip-audit on the lock
         run: |
