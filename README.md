@@ -9,6 +9,7 @@
   <a href="https://github.com/thatskiff33/nz-openbank-mcp/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/coverage-100%25-2dd4bf" alt="Coverage 100%"></a>
   <a href="https://github.com/thatskiff33/nz-openbank-mcp/blob/main/LICENSE"><img src="https://img.shields.io/github/license/thatskiff33/nz-openbank-mcp?color=2dd4bf" alt="License Apache-2.0"></a>
   <a href="https://github.com/thatskiff33/nz-openbank-mcp/releases/latest"><img src="https://img.shields.io/github/v/release/thatskiff33/nz-openbank-mcp?color=2dd4bf&label=release" alt="Latest release"></a>
+  <a href="https://scorecard.dev/viewer/?uri=github.com/thatskiff33/nz-openbank-mcp"><img src="https://api.scorecard.dev/projects/github.com/thatskiff33/nz-openbank-mcp/badge" alt="OpenSSF Scorecard"></a>
   <a href="https://glama.ai/mcp/servers/thatskiff33/nz-openbank-mcp"><img src="https://glama.ai/mcp/servers/thatskiff33/nz-openbank-mcp/badges/score.svg" alt="Glama MCP server score"></a>
 </p>
 
@@ -323,6 +324,13 @@ rejected.
 - Account and date filters are sent to Akahu; category and amount filters are
   applied after the data arrives. Personal Apps have no finer-grained access
   control, so the token can read everything you connected.
+
+Release files (wheel, sdist and `.mcpb`) carry GitHub build provenance, and
+PyPI uploads come from Trusted Publishing. To check a download:
+
+```bash
+gh attestation verify nz-openbank-mcp-X.Y.Z.mcpb --repo thatskiff33/nz-openbank-mcp
+```
 
 Report vulnerabilities privately through [`SECURITY.md`](https://github.com/thatskiff33/nz-openbank-mcp/blob/main/SECURITY.md).
 
