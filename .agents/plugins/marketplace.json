@@ -1,7 +1,7 @@
 {
   "name": "nz-openbank",
   "interface": {
-    "displayName": "NZ Open Banking"
+    "displayName": "NZ Open Banking MCP (Akahu)"
   },
   "plugins": [
     {

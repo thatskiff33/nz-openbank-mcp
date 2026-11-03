@@ -19,7 +19,7 @@
   ],
   "mcpServers": "./codex-mcp.json",
   "interface": {
-    "displayName": "NZ Akahu MCP",
+    "displayName": "NZ Open Banking MCP (Akahu)",
     "shortDescription": "NZ bank accounts via Akahu",
     "longDescription": "Ask your AI assistant about your New Zealand bank accounts through Akahu open finance, using a Personal App you control. Runs locally over stdio, starts read-only, and asks before every write. Unofficial; not affiliated with Akahu or any bank.",
     "developerName": "thatskiff33",
