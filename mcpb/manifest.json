@@ -1,7 +1,7 @@
 {
   "manifest_version": "0.3",
   "name": "nz-openbank-mcp",
-  "display_name": "NZ Akahu MCP",
+  "display_name": "NZ Open Banking MCP (Akahu)",
   "version": "0.1.6",
   "description": "Unofficial MCP server for the Akahu open-finance API (NZ). 14 tools, read-only by default, runs locally over stdio.",
   "long_description": "Ask your AI assistant about your New Zealand bank accounts through Akahu open finance, using a Personal App you control. Runs locally over stdio, starts read-only, and asks before every write. Unofficial; not affiliated with Akahu or any bank.",

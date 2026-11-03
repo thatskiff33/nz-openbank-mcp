@@ -6,7 +6,7 @@
 # The version comes from pyproject.toml. CI fails if a generated file drifts.
 
 name = "nz-openbank-mcp"
-display_name = "NZ Akahu MCP"
+display_name = "NZ Open Banking MCP (Akahu)"
 description = "Unofficial MCP server for the Akahu open-finance API (NZ). 14 tools, read-only by default, runs locally over stdio."
 short_description = "Akahu open finance (NZ): accounts, transactions, identity"
 server_name = "akahu"
@@ -31,7 +31,7 @@ grok_category = "productivity"
 # and match the `mcp-name:` line in README.md, which PyPI publishes.
 [registry]
 name = "io.github.thatskiff33/nz-openbank-mcp"
-title = "NZ Open Banking (Akahu)"
+title = "NZ Open Banking MCP (Akahu)"
 description = "Ask about your NZ bank accounts via Akahu open finance. Read-only by default, consent per write."
 icon = "https://raw.githubusercontent.com/thatskiff33/nz-openbank-mcp/main/docs/assets/icon.svg"
 
@@ -42,7 +42,7 @@ url = "https://github.com/thatskiff33"
 
 [marketplace]
 name = "nz-openbank"
-display_name = "NZ Open Banking"
+display_name = "NZ Open Banking MCP (Akahu)"
 description = "MCP server for New Zealand open banking via the Akahu API. Read-by-default, write-with-consent."
 
 # One entry per environment variable the server reads. `key` is the

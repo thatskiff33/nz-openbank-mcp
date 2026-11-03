@@ -4,6 +4,10 @@ Notable changes per release. Full notes and downloads are on the
 [Releases page](https://github.com/thatskiff33/nz-openbank-mcp/releases).
 Versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+- Display name is now "NZ Open Banking MCP (Akahu)" in every plugin, extension and registry manifest.
+
 ## 0.1.6 - 2026-11-02
 
 - GitHub Releases are created by the release workflow with the wheel, sdist and `.mcpb` attached before publishing, since releases are immutable once published.
