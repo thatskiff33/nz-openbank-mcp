@@ -154,17 +154,22 @@ def test_dockerfile_safe_env_only_in_build_stage_is_caught(checkout: Path) -> No
         (
             "uv sync --frozen --no-dev --no-install-project --no-build",
             "uv sync --frozen --no-dev --no-editable",
-            "uv sync needs --no-install-project and --no-build",
+            "uv sync needs --no-build --no-install-project",
         ),
         (
             "uv sync --frozen --no-dev --no-install-project --no-build",
             "uv sync --frozen --no-dev --no-install-project",
-            "uv sync needs --no-install-project and --no-build",
+            "uv sync needs --no-build",
         ),
         (
-            '--no-deps --no-build "$1"',
-            '--no-deps "$1"',
-            "pip install needs --no-build",
+            '--no-deps --no-build "$wheel"',
+            '--no-deps "$wheel"',
+            "uv pip install needs --no-build",
+        ),
+        (
+            '--no-deps --no-build "$wheel"',
+            '--no-deps --no-build --build "$wheel"',
+            "uv --build undoes --no-build",
         ),
     ],
 )
@@ -180,28 +185,104 @@ def test_dockerfile_must_not_build_the_package(
     assert f"Dockerfile: {message}" in result.stderr
 
 
+ANCHOR = "COPY pyproject.toml uv.lock ./\n"
+
+
+def _add_after_anchor(checkout: Path, extra: str) -> subprocess.CompletedProcess[str]:
+    dockerfile = checkout / "Dockerfile"
+    text = dockerfile.read_text(encoding="utf-8")
+    assert text.count(ANCHOR) == 1
+    dockerfile.write_text(text.replace(ANCHOR, ANCHOR + extra), "utf-8")
+    return _check(checkout)
+
+
+@pytest.mark.parametrize(
+    ("extra", "message"),
+    [
+        # uv commands outside the allowlist, however they are spelled.
+        ("RUN uv build --wheel\n", "uv build is not allowed"),
+        ("RUN uv -q build\n", "uv build is not allowed"),
+        ("RUN uv --cache-dir /tmp/c lock\n", "uv /tmp/c lock is not allowed"),
+        ("RUN true && uv run nz-openbank-mcp --help\n", "uv run nz-openbank-mcp is not allowed"),
+        ("RUN uv tool install hatch\n", "uv tool install is not allowed"),
+        ("RUN uv add hatchling\n", "uv add hatchling is not allowed"),
+        ("RUN uv remove httpx\n", "uv remove httpx is not allowed"),
+        ("RUN uv version --bump patch\n", "uv version patch is not allowed"),
+        ("RUN uv pip wheel .\n", "uv pip wheel is not allowed"),
+        ("RUN uv pip compile pyproject.toml\n", "uv pip compile is not allowed"),
+        ("RUN uv pip sync /tmp/req.txt\n", "uv pip sync is not allowed"),
+        ("RUN uv --no-cache sync --frozen\n", "uv sync needs --no-build --no-install-project"),
+        ('RUN ["uv", "sync", "--frozen"]\n', "uv sync needs --no-build --no-install-project"),
+        ("RUN x=$(uv build)\n", "uv build is not allowed"),
+        ("RUN true & uv build\n", "uv build is not allowed"),
+        ("ONBUILD RUN uv build\n", "uv build is not allowed"),
+        ("RUN echo hi \\\n# a comment\n    && uv build\n", "uv build is not allowed"),
+        ("RUN echo hi \\\n\n    && uv build\n", "uv build is not allowed"),
+        # Programs and wrappers outside the allowlist.
+        ("RUN uvx hatch build\n", "RUN uses uvx, which this check does not allow"),
+        ("RUN hatch build\n", "RUN uses hatch, which this check does not allow"),
+        ("RUN pyproject-build\n", "RUN uses pyproject-build, which"),
+        ("RUN pip install --no-build .\n", "RUN uses pip, which"),
+        ("RUN pip3 install .\n", "RUN uses pip3, which"),
+        ("RUN pipx run build\n", "RUN uses pipx, which"),
+        ("RUN sudo uv build\n", "RUN uses sudo, which"),
+        ("RUN /usr/bin/env uv build\n", "RUN uses /usr/bin/env, which"),
+        ("RUN timeout 600 uv build\n", "RUN uses timeout, which"),
+        ("RUN ls | xargs uv build\n", "RUN uses ls, which"),
+        ('RUN sh -c "uv sync"\n', "RUN uses sh, which"),
+        ("RUN bash -lc 'uv build'\n", "RUN uses bash, which"),
+        ('RUN ["/bin/sh", "-c", "uv build"]\n', "RUN uses /bin/sh, which"),
+        # python may only run inline code.
+        ("RUN python -m build\n", "python may only run -c code"),
+        ("RUN python3 -mpip install .\n", "python may only run -c code"),
+        ("RUN python -m hatchling build\n", "python may only run -c code"),
+        ("RUN python setup.py bdist_wheel\n", "python may only run -c code"),
+        # Constructs the check cannot read.
+        ("RUN <<EOF\nuv sync\nEOF\n", "RUN may not use <<"),
+        ("RUN bash <<EOF\nuv build\nEOF\n", "RUN may not use <<"),
+        ('RUN echo "$(python -m build /ctx)"\n', "RUN may not use $( or ` inside quotes"),
+        ('RUN echo "`pip install /ctx`"\n', "RUN may not use $( or ` inside quotes"),
+        # Ways to change what an allowed command runs.
+        ('SHELL ["pip", "install", "/ctx"]\nRUN echo\n', "SHELL changes what RUN executes"),
+        ("ENV PATH=/ctx/bin:$PATH\nRUN uv pip check\n", "RUN after ENV PATH in the same stage"),
+        (
+            "RUN PATH=/ctx/bin uv sync --frozen --no-install-project --no-build\n",
+            "RUN may not set PATH",
+        ),
+    ],
+)
+def test_dockerfile_extra_build_step_is_caught(checkout: Path, extra: str, message: str) -> None:
+    result = _add_after_anchor(checkout, extra)
+    assert result.returncode == 1
+    assert f"Dockerfile: {message}" in result.stderr
+
+
 @pytest.mark.parametrize(
     "extra",
     [
-        "RUN uv build --wheel\n",
-        "RUN true && uv run nz-openbank-mcp --help\n",
-        'RUN ["uv", "sync", "--frozen"]\n',
-        "RUN python -m build\n",
-        "RUN uvx hatch build\n",
-        "RUN pip install .\n",
-        "RUN <<EOF\nuv sync\nEOF\n",
+        "RUN useradd -m build app\n",
+        'RUN echo "see uvx docs and pip install notes"\n',
+        'RUN echo "x; pip install it first (later)" >&2\n',
+        "RUN uv --version && uv pip check\n",
+        "RUN uv pip list --python /app/.venv/bin/python\n",
+        "RUN set -eu; if [ -n x ]; then echo ok; fi\n",
+        'RUN msg="a b"; echo "$msg"\n',
+        "RUN [ -f /app/pyproject.toml ] || exit 1\n",
+        "RUN echo x 2>/dev/null\n",
+        "RUN 2>/dev/null echo x\n",
     ],
 )
-def test_dockerfile_extra_build_step_is_caught(checkout: Path, extra: str) -> None:
+def test_dockerfile_harmless_run_is_not_flagged(checkout: Path, extra: str) -> None:
+    result = _add_after_anchor(checkout, extra)
+    assert result.returncode == 0, result.stderr
+
+
+def test_dockerfile_escape_directive_is_refused(checkout: Path) -> None:
     dockerfile = checkout / "Dockerfile"
-    text = dockerfile.read_text(encoding="utf-8")
-    anchor = "COPY dist/ /tmp/dist/\n"
-    assert text.count(anchor) == 1
-    dockerfile.write_text(text.replace(anchor, anchor + extra), "utf-8")
+    dockerfile.write_text("# escape=`\n" + dockerfile.read_text(encoding="utf-8"), "utf-8")
     result = _check(checkout)
     assert result.returncode == 1
-    assert "Dockerfile: " in result.stderr
-    assert "ENV must set" not in result.stderr
+    assert "Dockerfile: the escape directive is not supported" in result.stderr
 
 
 def test_claude_marketplace_must_point_at_plugin(checkout: Path) -> None:

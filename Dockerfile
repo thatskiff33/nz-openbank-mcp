@@ -4,7 +4,7 @@
 #
 # The image installs a wheel built beforehand with the hash-pinned build
 # backend, so no build backend runs inside the image build. Releases install
-# the wheel published to PyPI. To build locally:
+# the wheel the release publishes to PyPI. To build locally:
 #   uv build --wheel --build-constraints .github/build-constraints/requirements.txt --require-hashes
 #   docker build .
 
@@ -12,16 +12,20 @@ FROM ghcr.io/astral-sh/uv:python3.14-bookworm-slim@sha256:7cf77f594be8042dab6daa
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
-# Locked, hash-checked dependencies only. --no-build refuses any source build.
+# Locked, hash-checked dependencies only; --no-build refuses source builds.
 RUN uv sync --frozen --no-dev --no-install-project --no-build
-COPY dist/ /tmp/dist/
-RUN set -eu; \
-    set -- /tmp/dist/nz_openbank_mcp-*-py3-none-any.whl; \
-    if [ "$#" -ne 1 ] || [ ! -f "$1" ]; then \
-      echo "dist/ must hold exactly one nz_openbank_mcp wheel; build it first (see the top of this file)" >&2; \
+# The wheel named for this pyproject version, installed with no network access.
+# --no-build makes uv refuse anything but a wheel.
+RUN --network=none --mount=type=bind,source=.,target=/ctx \
+    set -eu; \
+    uv --version; \
+    version=$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])'); \
+    wheel="/ctx/dist/nz_openbank_mcp-${version}-py3-none-any.whl"; \
+    if [ ! -f "$wheel" ]; then \
+      echo "dist/ has no nz_openbank_mcp ${version} wheel; build it first (see the top of this file)" >&2; \
       exit 1; \
     fi; \
-    uv pip install --python /app/.venv/bin/python --no-deps --no-build "$1"; \
+    uv pip install --offline --python /app/.venv/bin/python --no-deps --no-build "$wheel"; \
     uv pip check --python /app/.venv/bin/python
 
 FROM python:3.14-slim-bookworm@sha256:516b51cb9db2ef061e465c803e50f64361b82cefd91e525b889b967b83e83527

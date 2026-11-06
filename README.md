@@ -251,6 +251,14 @@ tokens stay out of the command line. For a JSON-configured client, use
 `"command": "docker"` with those arguments. For the HTTP server, run
 `nz-openbank-mcp-http` in the image; see the HTTPS guide.
 
+To build the image from a checkout, build the wheel first; the image installs
+it rather than building the package itself:
+
+```bash
+uv build --wheel --build-constraints .github/build-constraints/requirements.txt --require-hashes
+docker build -t nz-openbank-mcp .
+```
+
 ## Settings
 
 The server reads settings from its process environment, plus an env file only
