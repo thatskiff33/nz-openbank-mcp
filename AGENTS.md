@@ -236,10 +236,13 @@ marketplace pointing at `plugin/`, and version lockstep.
 
 `ci.yml` runs on PRs, pushes to `main`, weekly and on dispatch. PRs run only
 the jobs their paths touch; other triggers run everything. The required
-checks are `ci-ok` and `no personal email addresses` from `pr-hygiene.yml`,
-which fails a PR whose commits are not authored and committed with a GitHub
-noreply address, or whose trailers, title or body hold a personal address
-(`scripts/check_commit_emails.py`). Actions are pinned to commit SHAs, and Dependabot
+checks are `ci-ok` and `no personal email addresses` from `pr-hygiene.yml`.
+That check keeps personal addresses off `main`: it fails a PR whose commits
+are not authored and committed with a GitHub noreply address, or whose commit
+messages, added lines, title or body hold a personal address
+(`scripts/check_commit_emails.py`). A second job checks each push to `main`,
+because the squash commit takes the merging account's commit email. Anything
+pushed is public already; commit with a noreply `user.email`. Actions are pinned to commit SHAs, and Dependabot
 proposes weekly grouped updates. The package build backend is pinned with hashes in
 `.github/build-constraints/` (edit `requirements.in`, then recompile with the
 command in `requirements.txt`); CI and the release build use it. The

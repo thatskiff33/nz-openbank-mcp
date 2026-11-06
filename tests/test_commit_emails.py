@@ -1,4 +1,4 @@
-"""scripts/check_commit_emails.py refuses personal email addresses in a PR."""
+"""scripts/check_commit_emails.py keeps personal email addresses off main."""
 
 from __future__ import annotations
 
@@ -15,9 +15,10 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = ROOT / "scripts" / "check_commit_emails.py"
 NOREPLY = "12345+someone@users.noreply.github.com"
-# Synthetic addresses only; the real ones must never appear in the repo.
-GMAIL = "someone.else@gmail.com"
-WORK = "a.person@unlimit.co.nz"
+# Synthetic addresses, split so this file never holds a whole personal address
+# (the check scans every line a PR adds).
+GMAIL = "someone.else" + "@gmail.com"
+WORK = "a.person" + "@unlimit.co.nz"
 
 
 def _commit(**overrides: Any) -> dict[str, Any]:
@@ -35,20 +36,21 @@ def _run(
     tmp_path: Path,
     commits: list[dict[str, Any]],
     *,
+    diff: str | None = None,
     title: str = "Fix a thing",
     body: str = "",
-    author_type: str = "User",
+    author: str = "someone",
 ) -> subprocess.CompletedProcess[str]:
     path = tmp_path / "commits.jsonl"
     path.write_text("".join(json.dumps(c) + "\n" for c in commits), encoding="utf-8")
-    env = {
-        **os.environ,
-        "PR_TITLE": title,
-        "PR_BODY": body,
-        "PR_AUTHOR_TYPE": author_type,
-    }
+    args = [str(path)]
+    if diff is not None:
+        diff_path = tmp_path / "added.diff"
+        diff_path.write_text(diff, encoding="utf-8")
+        args.append(str(diff_path))
+    env = {**os.environ, "PR_TITLE": title, "PR_BODY": body, "PR_AUTHOR": author}
     return subprocess.run(  # noqa: S603 - this interpreter running a repo script
-        [sys.executable, str(SCRIPT), str(path)],
+        [sys.executable, str(SCRIPT), *args],
         capture_output=True,
         text=True,
         check=False,
@@ -63,6 +65,7 @@ def _run(
         _commit(author="49699333+dependabot[bot]@users.noreply.github.com"),
         _commit(author="41898282+github-actions[bot]@users.noreply.github.com"),
         _commit(committer="NoReply@GitHub.com"),
+        _commit(author=NOREPLY + " "),
         _commit(message="Bump x\n\nSigned-off-by: dependabot[bot] <support@github.com>"),
     ],
 )
@@ -83,22 +86,36 @@ def test_noreply_commits_pass(tmp_path: Path, commit: dict[str, Any]) -> None:
             _commit(committer=WORK),
             "abcdef1: committer email is not a GitHub noreply address (unlimit.co.nz)",
         ),
+        # Outside contributors must use their noreply address too.
         (
             _commit(author="dev@example.com"),
-            "author email is not a GitHub noreply address (example.com)",
+            "author email is not a GitHub noreply address (another domain)",
         ),
         (_commit(author=""), "author email is not a GitHub noreply address (no domain)"),
+        (_commit(author=None), "author email is not a GitHub noreply address (no domain)"),
         (
             _commit(author=f"x{NOREPLY}.evil.example"),
             "author email is not a GitHub noreply address",
         ),
         (
             _commit(message=f"Fix\n\nCo-authored-by: Someone <{GMAIL}>"),
-            "abcdef1: Co-authored-by trailer names a personal address (gmail.com)",
+            "abcdef1: commit message contains a personal address (gmail.com)",
         ),
         (
-            _commit(message=f"Fix\n\nSigned-off-by: A Person <{WORK.upper()}>"),
-            "Signed-off-by trailer names a personal address (UNLIMIT.CO.NZ)",
+            _commit(message=f"Fix\n\n  Co-authored-by : A <{WORK.upper()}>"),
+            "commit message contains a personal address (UNLIMIT.CO.NZ)",
+        ),
+        (
+            _commit(message=f"Thanks {GMAIL}"),
+            "commit message contains a personal address (gmail.com)",
+        ),
+        (
+            _commit(message="x\n\nReviewed-by: B <b.c" + "@googlemail.com>"),
+            "commit message contains a personal address (googlemail.com)",
+        ),
+        (
+            _commit(message="x\n\nReported-by: C <c" + "@mail.unlimit.co.nz>"),
+            "commit message contains a personal address (mail.unlimit.co.nz)",
         ),
     ],
 )
@@ -115,17 +132,12 @@ def test_addresses_are_never_printed(tmp_path: Path) -> None:
     result = _run(
         tmp_path,
         [_commit(author=GMAIL, message=f"x\n\nCo-authored-by: A <{WORK}>")],
+        diff=f"+++ b/README.md\n@@ -1,0 +1 @@\n+mail {GMAIL}\n",
         body=f"contact {GMAIL}",
     )
     assert result.returncode == 1
     assert GMAIL not in result.stderr + result.stdout
     assert WORK not in result.stderr + result.stdout
-
-
-def test_address_in_message_body_outside_a_trailer_is_allowed(tmp_path: Path) -> None:
-    # Only trailers are checked; prose may quote an address deliberately.
-    result = _run(tmp_path, [_commit(message=f"Fix\n\nReported upstream by {GMAIL}.")])
-    assert result.returncode == 0, result.stderr
 
 
 @pytest.mark.parametrize(("title", "body"), [(f"Thanks {GMAIL}", ""), ("Fix", f"cc {WORK}")])
@@ -135,19 +147,59 @@ def test_personal_address_in_title_or_body_fails(tmp_path: Path, title: str, bod
     assert "PR title contains" in result.stderr or "PR body contains" in result.stderr
 
 
-def test_domain_without_an_address_is_allowed_in_the_body(tmp_path: Path) -> None:
-    result = _run(tmp_path, [_commit()], body="Blocks @gmail.com and @unlimit.co.nz addresses.")
+def test_domain_without_an_address_is_allowed(tmp_path: Path) -> None:
+    text = "Blocks @gmail.com and @unlimit.co.nz addresses."
+    result = _run(
+        tmp_path,
+        [_commit(message=text)],
+        diff=f"+++ b/docs/x.md\n@@ -0,0 +1 @@\n+{text}\n",
+        body=text,
+    )
     assert result.returncode == 0, result.stderr
 
 
-def test_bot_pr_body_is_not_checked(tmp_path: Path) -> None:
-    result = _run(tmp_path, [_commit()], body=f"Release notes by {GMAIL}", author_type="Bot")
+def test_dependabot_pr_body_is_not_checked(tmp_path: Path) -> None:
+    result = _run(tmp_path, [_commit()], body=f"Release notes by {GMAIL}", author="dependabot[bot]")
     assert result.returncode == 0, result.stderr
 
 
 def test_bot_commits_are_still_checked(tmp_path: Path) -> None:
-    result = _run(tmp_path, [_commit(author=GMAIL)], author_type="Bot")
+    result = _run(tmp_path, [_commit(author=GMAIL)], author="dependabot[bot]")
     assert result.returncode == 1
+
+
+DIFF = (
+    "diff --git a/plugin/plugin.base.toml b/plugin/plugin.base.toml\n"
+    "index 1111111..2222222 100644\n"
+    "--- a/plugin/plugin.base.toml\n"
+    "+++ b/plugin/plugin.base.toml\n"
+    "@@ -3 +3 @@ name\n"
+    f'-email = "{NOREPLY}"\n'
+    f'+email = "{GMAIL}"\n'
+    "@@ -10,0 +11,2 @@ x\n"
+    "+fine line\n"
+    f"+owner {WORK}\n"
+    "diff --git a/old.txt b/old.txt\n"
+    "deleted file mode 100644\n"
+    "--- a/old.txt\n"
+    "+++ /dev/null\n"
+    "@@ -1 +0,0 @@\n"
+    f"-gone {GMAIL}\n"
+)
+
+
+def test_added_lines_are_checked_by_file_and_line(tmp_path: Path) -> None:
+    result = _run(tmp_path, [_commit()], diff=DIFF)
+    assert result.returncode == 1
+    assert "plugin/plugin.base.toml:3: adds a personal address (gmail.com)" in result.stderr
+    assert "plugin/plugin.base.toml:12: adds a personal address (unlimit.co.nz)" in result.stderr
+    # Removing an address is fine.
+    assert "old.txt" not in result.stderr
+
+
+def test_clean_diff_passes(tmp_path: Path) -> None:
+    diff = "+++ b/a.py\n@@ -0,0 +1 @@\n+print('hi')\n"
+    assert _run(tmp_path, [_commit()], diff=diff).returncode == 0
 
 
 def test_no_commits_fails(tmp_path: Path) -> None:
@@ -177,3 +229,39 @@ def test_pyproject_authors_have_no_email() -> None:
         for person in project.get(field, []):
             assert "email" not in person, f"{field} entry has an email"
             assert "@" not in person.get("name", ""), f"{field} name contains an address"
+
+
+def test_other_bots_pr_body_is_checked(tmp_path: Path) -> None:
+    result = _run(tmp_path, [_commit()], body=f"cc {GMAIL}", author="copilot-swe-agent[bot]")
+    assert result.returncode == 1
+
+
+@pytest.mark.parametrize(
+    ("text", "found"),
+    [
+        ("j\u00f6" + "@gmail.com", "gmail.com"),  # non-ASCII local part
+        ("a!" + "@gmail.com", "gmail.com"),
+        ("someone\uff20" + "gmail.com", "gmail.com"),  # full-width at sign
+        ("some\u200bone@" + "gmail.com", "gmail.com"),  # zero-width space
+        ("mailto:x" + "@unlimit.co.nz", "unlimit.co.nz"),
+        ("<x" + "@GMAIL.COM>", "GMAIL.COM"),
+        ("Thanks x" + "@gmail.com.", "gmail.com"),  # end of a sentence
+    ],
+)
+def test_address_forms_are_caught(tmp_path: Path, text: str, found: str) -> None:
+    result = _run(tmp_path, [_commit()], body=f"see {text} please")
+    assert result.returncode == 1
+    assert f"PR body contains a personal address ({found})" in result.stderr
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        'GMAIL = "someone" + "@gmail.com"',
+        "domains such as `@gmail.com` and (@unlimit.co.nz)",
+        "user@notgmail.com and x@unlimit.co.nz.example",
+    ],
+)
+def test_split_or_lookalike_addresses_are_not_flagged(tmp_path: Path, text: str) -> None:
+    result = _run(tmp_path, [_commit()], body=text)
+    assert result.returncode == 0, result.stderr

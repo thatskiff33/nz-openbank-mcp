@@ -77,6 +77,9 @@ Plain, specific writing in code, comments, commits and docs: no emojis and no
 em dashes. Comments explain why, not what.
 
 Commit with your GitHub noreply address
-(`git config user.email <id>+<login>@users.noreply.github.com`). A required
-check fails any PR whose commits use another address, or whose
-`Co-authored-by` trailers, title or body contain a personal address.
+(`git config user.email <id>+<login>@users.noreply.github.com`), and turn on
+"Keep my email addresses private" in your GitHub email settings. A required
+check fails any PR whose commits use another address, including outside
+contributors' work addresses, or whose commit messages, added lines, title or
+body contain a personal address. Commits pushed to a PR branch are public
+even if the check later fails, so set this up before your first push.
