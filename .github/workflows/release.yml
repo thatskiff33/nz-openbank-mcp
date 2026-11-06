@@ -117,14 +117,34 @@ jobs:
       - name: manifests, launch pins and version lockstep
         run: uv run --no-project python scripts/check_packaging.py
 
+      # Checked here, before any publish job, so a missing section fails the
+      # release while the version can still be used.
+      - name: release notes from CHANGELOG
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v head="## ${version} " 'index($0, head) == 1 {on = 1; next} /^## / {on = 0} on'             CHANGELOG.md > notes.md
+          if ! grep -q '[^[:space:]]' notes.md; then
+            echo "CHANGELOG.md has no '## ${version} - <date>' section"
+            exit 1
+          fi
+
+      # The build backend comes from a hash-pinned constraints file, so the
+      # trusted build job only runs reviewed versions of hatchling and its deps.
       - name: build sdist + wheel
-        run: uv build
+        run: uv build --build-constraints .github/build-constraints/requirements.txt --require-hashes
 
       - name: upload artefacts
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: dist
           path: dist/
+          if-no-files-found: error
+
+      - name: upload release notes
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: notes
+          path: notes.md
           if-no-files-found: error
 
   build-mcpb:
@@ -158,15 +178,9 @@ jobs:
           version="${GITHUB_REF_NAME#v}"
           npx -y @anthropic-ai/mcpb@2.1.2 pack mcpb "dist/nz-openbank-mcp-${version}.mcpb"
 
-      - name: assert the packed manifest matches mcpb/manifest.json
-        run: |
-          version="${GITHUB_REF_NAME#v}"
-          unzip -p "dist/nz-openbank-mcp-${version}.mcpb" manifest.json | jq -S . > packed.json
-          jq -S . mcpb/manifest.json > source.json
-          if ! diff -u source.json packed.json; then
-            echo "Packed bundle manifest differs from mcpb/manifest.json"
-            exit 1
-          fi
+      # The packer has unlocked npm dependencies, so check every file it wrote.
+      - name: assert the packed bundle matches mcpb/ file for file
+        run: python3 scripts/check_mcpb_bundle.py "dist/nz-openbank-mcp-${GITHUB_REF_NAME#v}.mcpb"
 
       - name: upload bundle artefact
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -208,25 +222,24 @@ jobs:
         with:
           subject-path: dist/*
 
+      - name: download release notes
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: notes
+          path: .
+
       - name: create draft, attach assets, publish
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          version="${GITHUB_REF_NAME#v}"
-          awk -v head="## ${version} " 'index($0, head) == 1 {on = 1; next} /^## / {on = 0} on' \
-            CHANGELOG.md > notes.md
-          if ! grep -q '[^[:space:]]' notes.md; then
-            echo "CHANGELOG.md has no '## ${version} - <date>' section"
-            exit 1
-          fi
           gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" \
             --verify-tag --draft --title "$GITHUB_REF_NAME" --notes-file notes.md
           gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --latest
 
   publish-testpypi:
     name: publish to TestPyPI (dry run)
-    needs: build
+    needs: [build, build-mcpb]
     if: ${{ !inputs.publish }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -249,7 +262,7 @@ jobs:
 
   publish:
     name: publish to PyPI
-    needs: build
+    needs: [build, build-mcpb]
     if: inputs.publish
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -339,9 +352,14 @@ jobs:
           ref: ${{ github.sha }}
           persist-credentials: false
 
+      # Both helpers pull images; pin them by digest (tags as of 2026-11-06).
       - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+        with:
+          image: tonistiigi/binfmt:latest@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0
 
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          driver-opts: image=moby/buildkit:buildx-stable-1@sha256:c5f8862f52499773af85bc07695b2379ef08e8002352b0df2c4864c91d78dabe
 
       - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
