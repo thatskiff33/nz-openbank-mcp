@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from collections.abc import AsyncIterator, Awaitable, Callable
 from types import TracebackType
 from typing import Any, Self
@@ -46,6 +47,8 @@ _MAX_ATTEMPTS = 3
 _BASE_BACKOFF = 1.0
 _MAX_RETRY_AFTER = 60.0
 MAX_PAGES = 20
+# Letters, digits, underscore and hyphen only (ASCII), as in acc_... and trans_... ids.
+_AKAHU_ID = re.compile(r"[A-Za-z0-9_-]{1,128}", re.ASCII)
 
 PageFetcher = Callable[[str | None], Awaitable[tuple[list[Transaction], str | None]]]
 
@@ -71,6 +74,19 @@ class TransactionPages:
             if not cursor:
                 return
         self.truncated = True
+
+
+def check_akahu_id(value: str, *, name: str) -> str:
+    """Return `value` if it is a plain Akahu id; raise ToolError otherwise.
+
+    Akahu ids are short tokens such as `acc_...` or `trans_...`. Anything else
+    is refused before it is sent or shown in a confirmation prompt.
+    """
+    if not value or not value.strip():
+        raise ToolError(f"{name} must not be blank.")
+    if not _AKAHU_ID.fullmatch(value):
+        raise ToolError(f"{name} is not a valid Akahu id.")
+    return value
 
 
 def _items(data: dict[str, Any], path: str) -> list[Any]:
@@ -216,9 +232,7 @@ class AkahuClient:
     @staticmethod
     def _path_segment(value: str, *, name: str) -> str:
         """Encode a caller-supplied value as one URL path segment."""
-        if not value:
-            raise ValueError(f"{name} must not be empty")
-        return quote(value, safe="")
+        return quote(check_akahu_id(value, name=name), safe="")
 
     # ---------- read endpoints ----------
 
@@ -336,6 +350,8 @@ class AkahuClient:
         read, so it is retried like a GET.
         """
         path = "/transactions/ids"
+        for value in ids:
+            check_akahu_id(value, name="ids")
         data = await self._request("POST", path, json=ids, idempotent=True)
         return [Transaction.model_validate(item) for item in _items(data, path)]
 

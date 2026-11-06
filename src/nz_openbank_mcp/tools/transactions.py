@@ -7,12 +7,11 @@ from datetime import timedelta
 from typing import Annotated, Any, Literal
 
 from fastmcp import Context, FastMCP
-from fastmcp.exceptions import ToolError
 from pydantic import BeforeValidator, Field
 
 from nz_openbank_mcp import deps
 from nz_openbank_mcp.aio import pair
-from nz_openbank_mcp.client import AkahuClient, TransactionPages
+from nz_openbank_mcp.client import AkahuClient, TransactionPages, check_akahu_id
 from nz_openbank_mcp.formatting import (
     akahu_bound,
     format_money,
@@ -271,14 +270,15 @@ async def search_transactions(
 
 
 async def _complete_issue(ctx: Any, kw: dict[str, Any]) -> None:
-    if not (kw.get("transaction_id") or "").strip():
-        raise ToolError("transaction_id must not be blank.")
+    check_akahu_id(kw.get("transaction_id") or "", name="transaction_id")
     issue_type = kw["issue_type"]
     if issue_type == "DUPLICATE" and not kw.get("other_transaction_id"):
         other = await elicit_value(ctx, "Provide the paired duplicate transaction id:", str)
         if not isinstance(other, str) or not other.strip():
             raise ElicitationDeclinedError("User provided no transaction id.")
         kw["other_transaction_id"] = other
+    if kw.get("other_transaction_id"):
+        check_akahu_id(kw["other_transaction_id"], name="other_transaction_id")
     if issue_type in {"ENRICHMENT_ERROR", "ENRICHMENT_SUGGESTION"} and not kw.get("fields"):
         fields = await elicit_value(
             ctx,

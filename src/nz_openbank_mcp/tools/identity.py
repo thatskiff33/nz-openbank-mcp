@@ -13,6 +13,7 @@ from fastmcp import Context, FastMCP
 from fastmcp.exceptions import ToolError
 
 from nz_openbank_mcp import deps
+from nz_openbank_mcp.client import check_akahu_id
 from nz_openbank_mcp.safety import describe_request, require_write_consent
 from nz_openbank_mcp.tool_metadata import (
     NON_DESTRUCTIVE_WRITE_ANNOTATIONS,
@@ -43,8 +44,10 @@ async def get_me() -> dict[str, Any]:
 async def _check_name_args(_ctx: Any, kw: dict[str, Any]) -> None:
     if not (kw.get("family_name") or "").strip():
         raise ToolError("family_name must not be blank.")
-    if kw.get("account_id") is not None and not kw["account_id"].strip():
-        raise ToolError("account_id must not be blank; omit it to check every source.")
+    if kw.get("account_id") is not None:
+        if not kw["account_id"].strip():
+            raise ToolError("account_id must not be blank; omit it to check every source.")
+        check_akahu_id(kw["account_id"], name="account_id")
 
 
 def _describe_check(kw: dict[str, Any]) -> str:

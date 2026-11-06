@@ -8,6 +8,7 @@ from fastmcp import Context, FastMCP
 
 from nz_openbank_mcp import deps
 from nz_openbank_mcp.aio import pair
+from nz_openbank_mcp.client import check_akahu_id
 from nz_openbank_mcp.formatting import format_money, mask_account
 from nz_openbank_mcp.models import Account
 from nz_openbank_mcp.safety import describe_request, require_write_consent
@@ -139,6 +140,10 @@ async def refresh_all_accounts(*, ctx: Context) -> dict[str, Any]:
     return {"success": result.success, "message": result.message}
 
 
+async def _check_account_id(_ctx: Any, kw: dict[str, Any]) -> None:
+    check_akahu_id(kw.get("account_id") or "", name="account_id")
+
+
 @server.tool(
     title="Refresh Account",
     annotations=IDEMPOTENT_WRITE_ANNOTATIONS,
@@ -149,6 +154,7 @@ async def refresh_all_accounts(*, ctx: Context) -> dict[str, Any]:
         [("account", kw.get("account_id"))],
     ),
     automatable=True,
+    prepare=_check_account_id,
 )
 async def refresh_account(*, ctx: Context, account_id: str) -> dict[str, Any]:
     """Trigger Akahu to fetch fresh data for one specific account.
