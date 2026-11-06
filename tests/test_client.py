@@ -9,6 +9,7 @@ import httpx
 import pytest
 import respx
 
+from nz_openbank_mcp.client import AkahuHTTPError
 from tests.conftest import load_fixture
 
 # ----- auth + headers -----
@@ -352,7 +353,7 @@ async def test_retries_exhausted_raises(
 
     monkeypatch.setattr(client_mod.asyncio, "sleep", no_sleep)
     respx_mock.get("/me").mock(return_value=httpx.Response(500, json={"success": False}))
-    with pytest.raises(httpx.HTTPStatusError):
+    with pytest.raises(AkahuHTTPError):
         await akahu_client.get_me()
 
 
@@ -479,7 +480,7 @@ async def test_exhausted_429_raises_http_status(
         return httpx.Response(429)
 
     respx_mock.get("/me").mock(side_effect=respond)
-    with pytest.raises(httpx.HTTPStatusError):
+    with pytest.raises(AkahuHTTPError):
         await akahu_client.get_me()
     assert call_count["n"] == 3
 
@@ -495,7 +496,7 @@ async def test_4xx_other_than_429_does_not_retry(
         return httpx.Response(404, json={"success": False, "message": "not found"})
 
     respx_mock.get("/me").mock(side_effect=respond)
-    with pytest.raises(httpx.HTTPStatusError):
+    with pytest.raises(AkahuHTTPError):
         await akahu_client.get_me()
     assert call_count["n"] == 1
 
@@ -582,7 +583,7 @@ async def test_support_post_5xx_is_not_retried(
 ) -> None:
     _record_sleeps(monkeypatch)
     route = respx_mock.post("/support/txn_1").mock(return_value=httpx.Response(502))
-    with pytest.raises(httpx.HTTPStatusError):
+    with pytest.raises(AkahuHTTPError):
         await akahu_client.report_transaction_issue("txn_1", issue_type="ENRICHMENT_ERROR")
     assert route.call_count == 1
 
@@ -614,7 +615,7 @@ async def test_get_5xx_failure_sleeps_one_then_two(
 ) -> None:
     sleeps = _record_sleeps(monkeypatch)
     route = respx_mock.get("/me").mock(return_value=httpx.Response(503))
-    with pytest.raises(httpx.HTTPStatusError):
+    with pytest.raises(AkahuHTTPError):
         await akahu_client.get_me()
     assert route.call_count == 3
     assert sleeps == [1.0, 2.0]
@@ -731,7 +732,7 @@ async def test_verify_name_is_sent_once(
 ) -> None:
     _record_sleeps(monkeypatch)
     route = respx_mock.post("/verify/name").mock(side_effect=[failure])
-    with pytest.raises((httpx.HTTPStatusError, httpx.ReadTimeout)):
+    with pytest.raises((AkahuHTTPError, httpx.ReadTimeout)):
         await akahu_client.verify_name(family_name="Person")
     assert route.call_count == 1
 
@@ -741,7 +742,7 @@ async def test_exhausted_429_sleeps_only_between_attempts(
 ) -> None:
     sleeps = _record_sleeps(monkeypatch)
     respx_mock.get("/me").mock(return_value=httpx.Response(429))
-    with pytest.raises(httpx.HTTPStatusError):
+    with pytest.raises(AkahuHTTPError):
         await akahu_client.get_me()
     assert sleeps == [1.0, 2.0]
 
