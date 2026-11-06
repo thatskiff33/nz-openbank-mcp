@@ -42,6 +42,7 @@ def fake_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("AKAHU_BASE_URL", "https://api.akahu.io/v1")
     monkeypatch.setenv("AKAHU_READ_ONLY", "true")
     monkeypatch.setenv("AKAHU_AUTOMATION_BYPASS", "false")
+    monkeypatch.setenv("AKAHU_MASK_ACCOUNTS", "false")
     monkeypatch.setenv("AKAHU_REQUEST_TIMEOUT", "5")
     monkeypatch.setenv("AKAHU_LOG_LEVEL", "INFO")
 

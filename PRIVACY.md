@@ -11,7 +11,10 @@ use it.
   (`api.akahu.io`) and are never logged.
 - **Account and transaction data.** Fetched from Akahu when a tool is called
   and returned to your MCP client. The server does not store it. Account
-  numbers are masked to the bank code, the last four digits and the suffix.
+  numbers are shown in full unless `AKAHU_MASK_ACCOUNTS=true`, which masks
+  them to the bank code, the last four digits and the suffix. Transaction
+  descriptions are passed through as the bank supplied them and can include
+  account numbers.
 - **HTTP mode only.** When you self-host the HTTP server with OAuth, Google
   confirms who is signing in, and the server keeps encrypted OAuth state
   (client registrations, pending codes and Google tokens) in its state

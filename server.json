@@ -55,6 +55,14 @@
           "isRequired": false,
           "isSecret": false,
           "default": "false"
+        },
+        {
+          "name": "AKAHU_MASK_ACCOUNTS",
+          "description": "When 'true', account numbers show only the bank code, last four digits and suffix. Default 'false' shows them in full. Transaction descriptions are never masked.",
+          "format": "string",
+          "isRequired": false,
+          "isSecret": false,
+          "default": "false"
         }
       ]
     }

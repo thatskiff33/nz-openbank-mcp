@@ -11,7 +11,8 @@
         "AKAHU_USER_TOKEN",
         "AKAHU_APP_TOKEN",
         "AKAHU_READ_ONLY",
-        "AKAHU_AUTOMATION_BYPASS"
+        "AKAHU_AUTOMATION_BYPASS",
+        "AKAHU_MASK_ACCOUNTS"
       ]
     }
   }

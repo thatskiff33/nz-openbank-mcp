@@ -9,6 +9,7 @@ from fastmcp import Context, FastMCP
 from nz_openbank_mcp import deps
 from nz_openbank_mcp.aio import pair
 from nz_openbank_mcp.client import check_akahu_id
+from nz_openbank_mcp.config import get_config
 from nz_openbank_mcp.formatting import format_money, mask_account
 from nz_openbank_mcp.models import Account
 from nz_openbank_mcp.safety import describe_request, require_write_consent
@@ -22,13 +23,19 @@ server: FastMCP[Any] = FastMCP("accounts")
 
 
 def _summarise_account(account: Account) -> dict[str, Any]:
-    """Convert an Account model to the LLM-facing dict shape (masked, formatted)."""
+    """Convert an Account model to the LLM-facing dict shape.
+
+    formatted_account is shown in full unless AKAHU_MASK_ACCOUNTS=true.
+    """
+    formatted = account.formatted_account
     return {
         "id": account.id,
         "name": account.name,
         "type": account.type,
         "status": account.status,
-        "formatted_account": mask_account(account.formatted_account),
+        "formatted_account": mask_account(formatted)
+        if get_config().mask_accounts
+        else formatted or "",
         "connection": account.connection.name if account.connection else None,
         "balance": format_money(account.balance.current, account.balance.currency)
         if account.balance
@@ -39,11 +46,12 @@ def _summarise_account(account: Account) -> dict[str, Any]:
 
 @server.tool(title="List Accounts", annotations=READ_ONLY_ANNOTATIONS)
 async def list_accounts() -> dict[str, Any]:
-    """List every connected account with masked numbers and formatted balances.
+    """List every connected account with account numbers and formatted balances.
 
     Returns {"accounts": [...]} where each entry has id, name, type
     (CHECKING/SAVINGS/CREDITCARD/FOREIGN/...), status, formatted_account
-    (masked, e.g. "01-****-***4567-00"), connection (institution name, e.g.
+    (e.g. "01-0123-0123456-00"; masked as "01-****-***3456-00" when the server
+    sets AKAHU_MASK_ACCOUNTS=true), connection (institution name, e.g.
     "ANZ"), balance (formatted with currency, e.g. "$2,543.21" or
     "USD 100.00") and currency (ISO 4217 code). balance and currency are None
     if the account has no balance block; currency alone is None when Akahu
@@ -58,7 +66,7 @@ async def get_account(account_id: str) -> dict[str, Any]:
     """Fetch a single account by id.
 
     Returns the same shape as one entry in list_accounts["accounts"]:
-    id, name, type, status, formatted_account (masked), connection,
+    id, name, type, status, formatted_account, connection,
     balance (formatted with currency), currency.
 
     Args:

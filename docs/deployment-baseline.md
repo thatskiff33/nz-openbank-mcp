@@ -31,7 +31,7 @@ AKAHU_READ_ONLY=true
 AKAHU_AUTOMATION_BYPASS=false
 ```
 
-With this posture, read tools may return masked account and transaction data,
+With this posture, read tools may return account and transaction data,
 but write tools refuse before calling Akahu. Do not set
 `AKAHU_READ_ONLY=false` for routine ChatGPT or Claude use. Do not set
 `AKAHU_AUTOMATION_BYPASS=true` unless an operator has explicitly approved an

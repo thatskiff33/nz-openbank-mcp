@@ -49,7 +49,7 @@ machine, starts read-only, and asks before anything changes.
 | **Read-only by default** | Write tools refuse until you set `AKAHU_READ_ONLY=false`. |
 | **Consent per write** | With writes on, every write asks you first and shows exactly what will be sent. |
 | **Local and private** | Runs on your machine over stdio and talks only to `api.akahu.io`. Tokens and transaction contents are never logged. |
-| **Masked account numbers** | Only the bank code, the last four digits and the suffix are shown. |
+| **Account masking on request** | Set `AKAHU_MASK_ACCOUNTS=true` to show only the bank code, the last four digits and the suffix of account numbers. Off by default. |
 | **Small and tested** | Thin wrappers over Akahu endpoints, strict typing, and 100% line and branch test coverage enforced in CI. |
 
 [PyPI](https://pypi.org/project/nz-openbank-mcp/) ·
@@ -66,7 +66,7 @@ off until you turn writes on.
 
 | Tool | Writes? | Purpose |
 | --- | --- | --- |
-| `acct_list_accounts` | | Every connected account, with masked numbers and balances |
+| `acct_list_accounts` | | Every connected account, with account numbers and balances |
 | `acct_get_account` | | One account by id |
 | `acct_get_account_balance` | | Just the balance of one account |
 | `acct_get_pending_transactions` | | Unsettled transactions for one account |
@@ -167,7 +167,7 @@ codex plugin add nz-openbank-mcp@nz-openbank
 codex mcp list          # shows the akahu server
 ```
 
-Codex passes only the four `AKAHU_*` settings through to the server. Update
+Codex passes only the five `AKAHU_*` settings through to the server. Update
 with `codex plugin marketplace upgrade nz-openbank`.
 
 Grok Build:
@@ -259,6 +259,7 @@ when `AKAHU_ENV_FILE` names one (process values win). It never picks up a
 | `AKAHU_APP_TOKEN` | (required) | Your Personal App's App Token |
 | `AKAHU_READ_ONLY` | `true` | Refuse every write tool |
 | `AKAHU_AUTOMATION_BYPASS` | `false` | Skip the confirmation prompt for the two refresh tools |
+| `AKAHU_MASK_ACCOUNTS` | `false` | Show only the bank code, last four digits and suffix of account numbers |
 | `AKAHU_REQUEST_TIMEOUT` | `10` | Seconds per Akahu request (1 to 120) |
 | `AKAHU_LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR` or `CRITICAL` |
 | `AKAHU_ENV_FILE` | (unset) | Absolute path to an env file to load; on Linux and macOS it must be yours (or root's) and not writable by group or others |
@@ -330,9 +331,13 @@ rejected.
 
 ## Privacy
 
-- NZ account numbers are masked to the bank code, the last four account
-  digits and the suffix. In any other format, every digit but the last four
-  is masked.
+- Account numbers are shown in full by default. With
+  `AKAHU_MASK_ACCOUNTS=true`, NZ account numbers are masked to the bank code,
+  the last four account digits and the suffix, and in any other format every
+  digit but the last four is masked.
+- Transaction descriptions and merchant names are passed through as the bank
+  supplied them and are never masked. They can include account numbers, for
+  example on transfers.
 - Tokens are never logged. Balances and transaction contents are not logged;
   request paths, which can include Akahu account or transaction ids, are
   logged with their status.

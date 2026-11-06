@@ -34,7 +34,7 @@ def patched_client(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
 # ---------- list_accounts ----------
 
 
-async def test_list_accounts_returns_masked(fake_env: None, patched_client: MagicMock) -> None:
+async def test_list_accounts_returns_summary(fake_env: None, patched_client: MagicMock) -> None:
     from nz_openbank_mcp.tools.accounts import list_accounts
 
     result = await list_accounts()
@@ -116,7 +116,7 @@ async def test_list_accounts_renders_non_nzd_with_iso_prefix(
 # ---------- get_account ----------
 
 
-async def test_get_account_returns_masked(fake_env: None, patched_client: MagicMock) -> None:
+async def test_get_account_returns_summary(fake_env: None, patched_client: MagicMock) -> None:
     from nz_openbank_mcp.tools.accounts import get_account
 
     result = await get_account(account_id="acc_chq_001")
@@ -440,3 +440,84 @@ async def test_account_pending_requests_run_concurrently(
     async with asyncio.timeout(1):
         result = await get_pending_transactions(account_id="acc_chq_001")
     assert result["transactions"] == []
+
+
+# ---------- AKAHU_MASK_ACCOUNTS (owner decision on PRV-01) ----------
+
+NZ_NUMBER = "12-3456-7890123-00"
+CARD_NUMBER = "4111 1111 1111 1234"
+
+
+def _numbered_client(monkeypatch: pytest.MonkeyPatch, formatted: str) -> MagicMock:
+    from nz_openbank_mcp import deps
+
+    item = {**load_fixture("accounts")["items"][0], "formatted_account": formatted}
+    account = Account.model_validate(item)
+    client = MagicMock()
+    client.list_accounts = AsyncMock(return_value=[account])
+    client.get_account = AsyncMock(return_value=account)
+    monkeypatch.setattr(deps, "get_client", lambda: client)
+    return client
+
+
+@pytest.mark.parametrize("formatted", [NZ_NUMBER, CARD_NUMBER])
+async def test_account_numbers_are_shown_in_full_by_default(
+    fake_env: None, monkeypatch: pytest.MonkeyPatch, formatted: str
+) -> None:
+    from nz_openbank_mcp.tools.accounts import get_account, list_accounts
+
+    monkeypatch.delenv("AKAHU_MASK_ACCOUNTS", raising=False)
+    _numbered_client(monkeypatch, formatted)
+    assert (await list_accounts())["accounts"][0]["formatted_account"] == formatted
+    assert (await get_account(account_id="acc_chq_001"))["formatted_account"] == formatted
+
+
+@pytest.mark.parametrize(
+    ("formatted", "masked"),
+    [(NZ_NUMBER, "12-****-***0123-00"), (CARD_NUMBER, "**** **** **** 1234")],
+)
+async def test_mask_accounts_setting_masks_the_account_field(
+    fake_env: None, monkeypatch: pytest.MonkeyPatch, formatted: str, masked: str
+) -> None:
+    from nz_openbank_mcp.tools.accounts import get_account, list_accounts
+
+    monkeypatch.setenv("AKAHU_MASK_ACCOUNTS", "true")
+    _numbered_client(monkeypatch, formatted)
+    assert (await list_accounts())["accounts"][0]["formatted_account"] == masked
+    assert (await get_account(account_id="acc_chq_001"))["formatted_account"] == masked
+
+
+@pytest.mark.parametrize("setting", ["true", "false"])
+async def test_transaction_text_is_never_masked(
+    fake_env: None, monkeypatch: pytest.MonkeyPatch, setting: str
+) -> None:
+    """Descriptions and merchant names pass through as the bank supplied them."""
+    from nz_openbank_mcp import deps
+    from nz_openbank_mcp.client import TransactionPages
+    from nz_openbank_mcp.models import Transaction
+    from nz_openbank_mcp.tools.transactions import get_transactions
+
+    monkeypatch.setenv("AKAHU_MASK_ACCOUNTS", setting)
+    text = f"TRANSFER TO {NZ_NUMBER}"
+    txn = Transaction.model_validate(
+        {
+            "_id": "txn_x",
+            "_account": "acc_chq_001",
+            "date": "2026-01-01T00:00:00Z",
+            "description": text,
+            "amount": -1.0,
+            "type": "TRANSFER",
+            "merchant": {"_id": "m1", "name": text},
+        }
+    )
+
+    async def one_page(_cursor: str | None) -> tuple[list[Transaction], str | None]:
+        return [txn], None
+
+    client = MagicMock()
+    client.list_accounts = AsyncMock(return_value=[])
+    client.iter_transactions = MagicMock(side_effect=lambda **_: TransactionPages(one_page))
+    monkeypatch.setattr(deps, "get_client", lambda: client)
+    out = (await get_transactions())["transactions"][0]
+    assert out["description"] == text
+    assert out["merchant"] == text

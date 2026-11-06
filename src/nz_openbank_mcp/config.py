@@ -121,6 +121,10 @@ class AkahuConfig(_Settings):
         default=False,
         description="Skip elicit() for automatable writes (only when read_only is false)",
     )
+    mask_accounts: bool = Field(
+        default=False,
+        description="Mask account numbers to bank code, last four digits and suffix",
+    )
     request_timeout: int = Field(default=10, ge=1, le=120)
     log_level: LogLevel = Field(default="INFO")
 

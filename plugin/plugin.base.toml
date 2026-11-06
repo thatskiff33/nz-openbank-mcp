@@ -76,12 +76,19 @@ title = "Automation bypass"
 description = "Skip per-call consent prompts for safe-to-automate writes (account refresh only). Requires read-only=false."
 default = "false"
 
+[[setting]]
+var = "AKAHU_MASK_ACCOUNTS"
+key = "akahu_mask_accounts"
+title = "Mask account numbers"
+description = "When 'true', account numbers show only the bank code, last four digits and suffix. Default 'false' shows them in full. Transaction descriptions are never masked."
+default = "false"
+
 # Tool list shown by hosts before install. tests/test_manifests.py checks it
 # against the server's tools.
 
 [[tool]]
 name = "acct_list_accounts"
-description = "Every connected account, with masked numbers and balances"
+description = "Every connected account, with account numbers and balances"
 
 [[tool]]
 name = "acct_get_account"

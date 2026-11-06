@@ -40,14 +40,15 @@
         "AKAHU_USER_TOKEN": "${user_config.akahu_user_token}",
         "AKAHU_APP_TOKEN": "${user_config.akahu_app_token}",
         "AKAHU_READ_ONLY": "${user_config.akahu_read_only}",
-        "AKAHU_AUTOMATION_BYPASS": "${user_config.akahu_automation_bypass}"
+        "AKAHU_AUTOMATION_BYPASS": "${user_config.akahu_automation_bypass}",
+        "AKAHU_MASK_ACCOUNTS": "${user_config.akahu_mask_accounts}"
       }
     }
   },
   "tools": [
     {
       "name": "acct_list_accounts",
-      "description": "Every connected account, with masked numbers and balances"
+      "description": "Every connected account, with account numbers and balances"
     },
     {
       "name": "acct_get_account",
@@ -129,6 +130,13 @@
       "type": "string",
       "title": "Automation bypass",
       "description": "Skip per-call consent prompts for safe-to-automate writes (account refresh only). Requires read-only=false.",
+      "default": "false",
+      "required": false
+    },
+    "akahu_mask_accounts": {
+      "type": "string",
+      "title": "Mask account numbers",
+      "description": "When 'true', account numbers show only the bank code, last four digits and suffix. Default 'false' shows them in full. Transaction descriptions are never masked.",
       "default": "false",
       "required": false
     }
