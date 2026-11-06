@@ -17,18 +17,28 @@ from nz_openbank_mcp.client import AkahuHTTPError
 from tests.conftest import load_fixture
 
 # Values that must never appear in an error or a log line.
-SECRET_NAME = "Joint with Pat Example"
+SECRET_NAME = "Zyxwv"
 SECRET_ACCOUNT = "12-3456-7890123-00"
 SECRET_AMOUNT = "98765.43"
 
 
 def _bad_account() -> dict[str, Any]:
-    item = dict(load_fixture("accounts")["items"][0])
-    del item["type"]
-    item["name"] = SECRET_NAME
-    item["formatted_account"] = SECRET_ACCOUNT
-    item["balance"] = {"currency": "NZD", "current": float(SECRET_AMOUNT)}
-    return item
+    """An account missing `type`, with the name first and the balance last.
+
+    Pydantic's error text keeps the start and end of the input, so values at
+    either end are what an unsafe error would leak.
+    """
+    rest = {
+        k: v
+        for k, v in load_fixture("accounts")["items"][0].items()
+        if k not in {"type", "name", "balance", "formatted_account", "refreshed"}
+    }
+    return {
+        "name": SECRET_NAME,
+        **rest,
+        "formatted_account": SECRET_ACCOUNT,
+        "balance": {"currency": "NZD", "current": float(SECRET_AMOUNT)},
+    }
 
 
 @pytest_asyncio.fixture
@@ -81,6 +91,8 @@ async def test_validation_error_through_a_tool_leaks_nothing_to_model_or_logs(
         r.getMessage() + (logging.Formatter().formatException(r.exc_info) if r.exc_info else "")
         for r in caplog.records
     )
+    assert "unexpected Account" in text
+    assert "type missing" in text
     for secret in (SECRET_NAME, SECRET_ACCOUNT, SECRET_AMOUNT):
         assert secret not in text
         assert secret not in logged
