@@ -126,6 +126,9 @@ jobs:
       - run: uv sync --locked --extra dev
       - run: uv run ruff check .
       - run: uv run ruff format --check .
+      # Runs on every Python change, not only dependency changes.
+      - name: bandit
+        run: uv run bandit -q -r src
 
   types:
     name: types
@@ -209,8 +212,6 @@ jobs:
         run: |
           uv export --frozen --no-emit-project --all-extras --format requirements-txt \
             | uv run pip-audit --strict --disable-pip --require-hashes -r /dev/stdin
-      - name: bandit
-        run: uv run bandit -q -r src
 
   workflow-lint:
     name: workflow-lint
@@ -330,10 +331,31 @@ jobs:
           echo "tools: $count"
           test "$count" = 14
 
+  # uvx (plugins, Desktop Extension) resolves fresh within the pyproject ranges
+  # and ignores uv.lock. This runs the suite the same way, weekly and on demand.
+  fresh-deps:
+    name: tests on freshly resolved dependencies
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: "3.14"
+          enable-cache: false
+      - run: uv sync --upgrade --extra dev
+      - name: resolved versions
+        run: uv pip list | grep -iE '^(fastmcp|mcp|httpx|pydantic|pydantic-settings|starlette) '
+      - run: uv run pytest --no-cov
+
   ci-ok:
     name: ci-ok
     if: always()
-    needs: [changes, lint, types, test, audit, workflow-lint, packaging, docs, image]
+    needs: [changes, lint, types, test, audit, workflow-lint, packaging, docs, image, fresh-deps]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

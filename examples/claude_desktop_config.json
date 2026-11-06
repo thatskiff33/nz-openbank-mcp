@@ -2,12 +2,17 @@
   "mcpServers": {
     "nz-openbank": {
       "command": "uvx",
-      "args": ["nz-openbank-mcp"],
+      "args": [
+        "--from",
+        "nz-openbank-mcp==0.1.6",
+        "nz-openbank-mcp"
+      ],
       "env": {
-        "AKAHU_APP_TOKEN": "app_token_REPLACE_ME",
         "AKAHU_USER_TOKEN": "user_token_REPLACE_ME",
+        "AKAHU_APP_TOKEN": "app_token_REPLACE_ME",
         "AKAHU_READ_ONLY": "true",
-        "AKAHU_AUTOMATION_BYPASS": "false"
+        "AKAHU_AUTOMATION_BYPASS": "false",
+        "AKAHU_MASK_ACCOUNTS": "false"
       }
     }
   }

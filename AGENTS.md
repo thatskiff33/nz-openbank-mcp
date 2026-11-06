@@ -193,7 +193,8 @@ One codebase ships as a PyPI package, a plugin for Claude Code, Codex, Cursor
 and Grok Build (`plugin/`, with this repo as each host's marketplace), and a
 Claude Desktop Extension (`mcpb/`).
 
-All host manifests are generated from `plugin/plugin.base.toml` by
+All host manifests, `server.json` and `examples/claude_desktop_config.json`
+are generated from `plugin/plugin.base.toml` by
 `scripts/sync_plugin_manifests.py`, which takes the version from
 `pyproject.toml`. Edit the base file or the generator, regenerate, and commit
 the output; CI fails on drift.

@@ -8,12 +8,17 @@ is injected, the plugin and Desktop Extension declare the same keys, tokens are
 marked sensitive, and safety defaults stay read-only. For Codex, Cursor and
 Grok: env values are placeholders only (no literal values), Codex forwards
 exactly the declared variables, Cursor and Grok carry the same safe inline
-defaults, and every marketplace index points at plugin/. No root .mcp.json or
-portable plugin/plugin.json may exist. Exits non-zero on any failure.
+defaults, and every marketplace index points at plugin/. server.json marks the
+tokens secret with no default and carries the pinned defaults; no sensitive key
+has a default anywhere; the Dockerfile keeps the safe AKAHU_* defaults; and
+examples/claude_desktop_config.json runs the pinned release with safe values.
+No root .mcp.json or portable plugin/plugin.json may exist. Exits non-zero on
+any failure. `--root DIR` checks another checkout (used by the tests).
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import re
 import sys
@@ -88,8 +93,11 @@ def check_launch(rel: str, server: dict[str, Any], version: str) -> None:
 
 def check_user_config(rel: str, config: dict[str, Any]) -> None:
     for key in sorted(SENSITIVE_KEYS):
-        if not obj(config.get(key, {}), f"{rel}: {key}").get("sensitive"):
+        entry = obj(config.get(key, {}), f"{rel}: {key}")
+        if not entry.get("sensitive"):
             fail(f"{rel}: {key} must be declared sensitive")
+        if "default" in entry:
+            fail(f"{rel}: {key} is sensitive and must not have a default")
     for key, expected in PINNED_DEFAULTS.items():
         actual = obj(config.get(key, {}), f"{rel}: {key}").get("default")
         if actual != expected:
@@ -111,6 +119,44 @@ def check_inline_default_env(rel: str, env: dict[str, Any], keys: set[str]) -> N
             fail(f"{rel}: env {var} must be {want!r}, got {env.get(var)!r}")
     for var in sorted(set(env) - set(expected)):
         fail(f"{rel}: env {var} is not a declared setting")
+
+
+def check_registry() -> None:
+    rel = "server.json"
+    for package in load(rel).get("packages", []):
+        for raw in obj(package, rel).get("environmentVariables", []):
+            entry = obj(raw, rel)
+            key = str(entry.get("name", "")).lower()
+            if key in SENSITIVE_KEYS:
+                if not entry.get("isSecret"):
+                    fail(f"{rel}: {entry.get('name')} must be isSecret")
+                if "default" in entry:
+                    fail(f"{rel}: {entry.get('name')} is secret and must not have a default")
+            if key in PINNED_DEFAULTS and entry.get("default") != PINNED_DEFAULTS[key]:
+                fail(
+                    f"{rel}: {entry.get('name')} default must be {PINNED_DEFAULTS[key]!r}, "
+                    f"got {entry.get('default')!r}"
+                )
+
+
+def check_dockerfile() -> None:
+    text = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    for var, value in (("AKAHU_READ_ONLY", "true"), ("AKAHU_AUTOMATION_BYPASS", "false")):
+        if not re.search(rf"(?m)^\s*(?:ENV\s+)?{var}={value}\b", text):
+            fail(f"Dockerfile: ENV must set {var}={value}")
+
+
+def check_example(version: str) -> None:
+    rel = "examples/claude_desktop_config.json"
+    for name, server in servers(rel, load(rel)).items():
+        check_launch(f"{rel}: {name}", server, version)
+        env = obj(server.get("env", {}), f"{rel}: {name}.env")
+        for key, expected in PINNED_DEFAULTS.items():
+            if env.get(key.upper(), expected) != expected:
+                fail(f"{rel}: {key.upper()} must be {expected!r}, got {env.get(key.upper())!r}")
+        for key in sorted(SENSITIVE_KEYS):
+            if "REPLACE" not in str(env.get(key.upper(), "REPLACE")):
+                fail(f"{rel}: {key.upper()} must be a placeholder")
 
 
 def check_other_hosts(version: str, keys: set[str]) -> None:
@@ -167,19 +213,30 @@ def check_other_hosts(version: str, keys: set[str]) -> None:
                 fail(f"{rel}: plugin source {path!r} must be the plugin/ directory")
 
 
-def main() -> int:
+def check_claude_marketplace() -> None:
+    rel = ".claude-plugin/marketplace.json"
+    marketplace = load(rel)
+    require(rel, marketplace, "name", "owner", "plugins")
+    for plugin_entry in marketplace.get("plugins", []):
+        source = obj(plugin_entry, rel).get("source")
+        if not isinstance(source, str):
+            fail(f"{rel}: plugin source must be a relative path, got {source!r}")
+        elif source not in ("plugin", "./plugin"):
+            fail(f"{rel}: plugin source {source!r} must be the plugin/ directory")
+        elif not (ROOT / source / ".claude-plugin" / "plugin.json").is_file():
+            fail(f"{rel}: plugin source {source!r} has no .claude-plugin/plugin.json")
+
+
+def main(argv: list[str] | None = None) -> int:
+    global ROOT  # noqa: PLW0603 - one checkout per run; --root swaps it for tests
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--root", type=Path, default=ROOT, help="checkout to check")
+    ROOT = parser.parse_args(argv).root.resolve()
+
     pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     version = pyproject["project"]["version"]
 
-    marketplace_rel = ".claude-plugin/marketplace.json"
-    marketplace = load(marketplace_rel)
-    require(marketplace_rel, marketplace, "name", "owner", "plugins")
-    for plugin_entry in marketplace.get("plugins", []):
-        source = obj(plugin_entry, marketplace_rel).get("source")
-        if not isinstance(source, str):
-            fail(f"{marketplace_rel}: plugin source must be a relative path, got {source!r}")
-        elif not (ROOT / source / ".claude-plugin" / "plugin.json").is_file():
-            fail(f"{marketplace_rel}: plugin source {source!r} has no .claude-plugin/plugin.json")
+    check_claude_marketplace()
 
     plugin_rel = "plugin/.claude-plugin/plugin.json"
     plugin = load(plugin_rel)
@@ -215,6 +272,9 @@ def main() -> int:
             fail(f"{rel}: version {data.get('version')!r} != pyproject.toml {version!r}")
 
     check_other_hosts(version, set(user_config))
+    check_registry()
+    check_dockerfile()
+    check_example(version)
 
     init = (ROOT / "src" / "nz_openbank_mcp" / "__init__.py").read_text(encoding="utf-8")
     if f'__version__ = "{version}"' not in init:
