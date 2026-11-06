@@ -8,6 +8,8 @@ import sys
 import zipfile
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = ROOT / "scripts" / "check_mcpb_bundle.py"
 MCPB = ROOT / "mcpb"
@@ -111,7 +113,10 @@ def test_wrong_arguments_print_usage() -> None:
 
 def test_a_repeated_entry_fails(tmp_path: Path) -> None:
     bundle = _pack(tmp_path / "x.mcpb")
-    with zipfile.ZipFile(bundle, "a") as archive:
+    with (
+        zipfile.ZipFile(bundle, "a") as archive,
+        pytest.warns(UserWarning, match="Duplicate name"),
+    ):
         archive.writestr("icon.png", b"second copy")
     result = _run(bundle)
     assert result.returncode == 1
