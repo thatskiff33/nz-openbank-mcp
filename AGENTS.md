@@ -53,6 +53,8 @@ ignores `uv.lock`.
 | `src/nz_openbank_mcp/config.py` | `AkahuConfig` (`AKAHU_*` settings); `get_config()` reads it once per process |
 | `src/nz_openbank_mcp/deps.py` | Shared client (`get_client`, `aclose_client`, closed by the root server's lifespan) |
 | `src/nz_openbank_mcp/safety.py` | `@require_write_consent`, `describe_request`, `shown` |
+| `src/nz_openbank_mcp/http_auth.py` | HTTP inbound auth: `StaticBearerAuthProvider`, `AllowlistedGoogleOAuthProvider`, encrypted `DurableOAuthStorage` |
+| `src/nz_openbank_mcp/tool_metadata.py` | Tool annotations (every hint set explicitly) |
 | `src/nz_openbank_mcp/formatting.py` | `format_money`, `mask_account`, `local_date`, `akahu_bound`, `nz_day`, `nz_today`, `parse_iso_date` |
 | `src/nz_openbank_mcp/aio.py` | `pair`: two requests at once; a failure cancels the other and is raised as itself |
 
@@ -226,7 +228,7 @@ Layout constraints:
   `plugin-<displayName or name>-akahu`.
 
 `scripts/check_packaging.py` checks the cross-host rules: pinned launch,
-placeholder-only env, safe defaults, exact Codex variable list, every
+placeholder-only env, pinned defaults, exact Codex variable list, every
 marketplace pointing at `plugin/`, and version lockstep.
 
 ## CI and releases
@@ -239,9 +241,11 @@ proposes weekly grouped updates.
 To release: bump `version` in `pyproject.toml` and `__version__` in
 `src/nz_openbank_mcp/__init__.py`, regenerate the manifests, merge, tag the
 merge commit `vX.Y.Z`, run `gh workflow run release.yml --ref vX.Y.Z` for the
-TestPyPI dry run, then publish the GitHub Release and approve the `pypi`
-environment. `release.yml` builds only a tag whose commit is on `main` with a
-green `ci.yml` push run. `PUBLISHING.md` has the full steps.
+TestPyPI dry run, then run `gh workflow run release.yml --ref vX.Y.Z -f
+publish=true` and approve the `pypi` environment. The workflow creates and
+publishes the GitHub Release itself; never create it by hand, because releases
+are immutable once published. `release.yml` builds only a tag whose commit is
+on `main` with a green `ci.yml` push run. `PUBLISHING.md` has the full steps.
 
 ## Writing style
 

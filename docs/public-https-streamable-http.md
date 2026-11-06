@@ -1,8 +1,11 @@
-# Public HTTPS Streamable HTTP Exception
+# Public HTTPS Streamable HTTP Deployment
 
-The secure default for this banking-adjacent MCP server is local stdio or
-OpenAI Secure MCP Tunnel. This runbook documents the exception path for
-ChatGPT or Claude web custom connectors that require a public HTTPS MCP URL.
+This guide runs the `nz-openbank-mcp-http` entrypoint behind HTTPS so web
+assistants (claude.ai, ChatGPT, grok.com) can reach it as a custom connector.
+It is one of the documented ways to connect; the others are local stdio and,
+for ChatGPT Business, OpenAI Secure MCP Tunnel
+([chatgpt-business-tunnel.md](chatgpt-business-tunnel.md)), which needs no
+public listener.
 
 Use the placeholder URL below throughout this document. Replace
 `mcp.example.com` with a real domain you control:
@@ -14,10 +17,10 @@ https://mcp.example.com/openbank-mcp/mcp
 Do not use raw IP URLs. Remote web connectors need HTTPS with a valid domain
 certificate.
 
-## Threat Model Change
+## Required Controls
 
-This exposes a banking MCP endpoint to the internet. The exception is
-acceptable only with all of these controls in place:
+This exposes a banking MCP endpoint to the internet. Deploy it only with all of
+these controls in place:
 
 - App-level auth is required by `nz-openbank-mcp-http`; unauthenticated MCP
   requests fail with HTTP 401 before tool handling.
@@ -84,15 +87,6 @@ OAuth mode refuses to start without these:
   `nz-openbank-http.service` sets it to `/var/lib/nz-openbank-http` and creates
   that directory via `StateDirectory=`; the server keeps its `oauth-proxy/`
   subdirectory at mode 0700 and deletes expired entries hourly.
-
-Upgrading from 0.1.2 or earlier: move the `NZ_OPENBANK_MCP_*` values into
-`nz-openbank-http.env`, install the new unit, then delete the old OAuth state.
-Connectors sign in again afterwards.
-
-```bash
-sudo rm -rf /var/lib/nz-openbank-mcp/oauth-proxy \
-  /var/lib/nz-openbank-mcp/fastmcp /var/lib/nz-openbank-mcp/.local/share/fastmcp
-```
 
 Allowlist semantics:
 

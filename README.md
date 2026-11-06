@@ -112,6 +112,7 @@ fetches the release and a matching Python.
 | Cursor | Plugin from this repo's marketplace | Cursor plugin settings |
 | Grok Build | Plugin from this repo's marketplace | Environment Grok starts in |
 | claude.ai, ChatGPT, grok.com | Self-hosted HTTPS server with OAuth | Your server's environment |
+| ChatGPT Business | OpenAI Secure MCP Tunnel (no public server) | Your host's environment |
 | Anything else that speaks MCP | `uvx nz-openbank-mcp` | Environment of the client |
 
 Every option below starts with `AKAHU_READ_ONLY=true` and
@@ -211,6 +212,9 @@ Akahu tokens.
 Setup, the Google client, the redirect allowlist and hardening are covered in
 [docs/public-https-streamable-http.md](https://github.com/thatskiff33/nz-openbank-mcp/blob/main/docs/public-https-streamable-http.md),
 with a systemd example under [`deploy/linux-systemd/`](https://github.com/thatskiff33/nz-openbank-mcp/tree/main/deploy/linux-systemd).
+For ChatGPT Business there is also OpenAI Secure MCP Tunnel, which connects
+the local stdio server outbound and needs no public endpoint; see
+[docs/chatgpt-business-tunnel.md](https://github.com/thatskiff33/nz-openbank-mcp/blob/main/docs/chatgpt-business-tunnel.md).
 grok.com's connector callback,
 `https://grok.com/connectors-oauth-exchange-code/`, is not in the default
 redirect list. `NZ_OPENBANK_MCP_ALLOWED_REDIRECT_URIS` replaces that list, so
