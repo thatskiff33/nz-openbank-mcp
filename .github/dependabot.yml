@@ -19,3 +19,14 @@ updates:
     groups:
       uv:
         patterns: ["*"]
+
+  # Hash-pinned build backend for `uv build` (.github/build-constraints).
+  - package-ecosystem: pip
+    directory: /.github/build-constraints
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      build-backend:
+        patterns: ["*"]
