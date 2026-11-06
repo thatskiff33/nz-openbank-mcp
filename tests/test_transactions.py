@@ -761,6 +761,7 @@ async def test_search_reports_truncation_at_page_cap(
     result = await search_transactions(query="foo", limit=10)
     assert len(result["transactions"]) == 2
     assert result["truncated"] is True
+    assert result["limit_reached"] is False
 
 
 async def test_search_reaching_limit_reports_limit_reached_not_truncated(
@@ -889,14 +890,71 @@ async def test_transactions_on_account_without_balance_currency_have_no_currency
     assert t0["amount"] == "-1,234.50"
 
 
-async def test_accounts_lookup_failure_is_raised_as_itself(
+async def test_accounts_lookup_failure_cancels_the_scan_and_is_raised_as_itself(
     fake_env: None, patched_client: MagicMock
 ) -> None:
+    import asyncio
+
     from nz_openbank_mcp.tools.transactions import get_transactions
 
-    patched_client.list_accounts = AsyncMock(side_effect=ToolError("accounts down"))
-    with pytest.raises(ToolError, match="accounts down"):
-        await get_transactions()
+    page_started = asyncio.Event()
+    page_cancelled = asyncio.Event()
+
+    async def stuck_page(_cursor: str | None) -> tuple[list[Transaction], str | None]:
+        page_started.set()
+        try:
+            await asyncio.Event().wait()  # never answers
+        except asyncio.CancelledError:
+            page_cancelled.set()
+            raise
+        raise AssertionError("unreachable")  # pragma: no cover
+
+    async def failing_accounts() -> list[Account]:
+        await page_started.wait()
+        raise ToolError("accounts down")
+
+    pages = TransactionPages(stuck_page)
+    patched_client.iter_transactions = MagicMock(side_effect=lambda **_: pages)
+    patched_client.list_accounts = failing_accounts
+    async with asyncio.timeout(2):
+        with pytest.raises(ToolError, match="accounts down"):
+            await get_transactions()
+    assert page_cancelled.is_set()
+
+
+async def test_currency_lookup_overlaps_the_first_page_on_the_real_client(
+    fake_env: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Through AkahuClient and httpx: /accounts answers only after /transactions was requested."""
+    import asyncio
+
+    import httpx
+    import respx
+
+    from nz_openbank_mcp import deps
+    from nz_openbank_mcp.tools.transactions import get_transactions
+
+    monkeypatch.setattr(deps, "_client", None)
+    page_requested = asyncio.Event()
+
+    async def transactions_route(_request: httpx.Request) -> httpx.Response:
+        page_requested.set()
+        return httpx.Response(200, json=load_fixture("transactions"))
+
+    async def accounts_route(_request: httpx.Request) -> httpx.Response:
+        await page_requested.wait()
+        return httpx.Response(200, json=load_fixture("accounts"))
+
+    try:
+        with respx.mock(base_url="https://api.akahu.io/v1", assert_all_called=True) as router:
+            router.get("/transactions").mock(side_effect=transactions_route)
+            router.get("/accounts").mock(side_effect=accounts_route)
+            async with asyncio.timeout(2):
+                result = await get_transactions()
+    finally:
+        await deps.aclose_client()
+    assert len(result["transactions"]) == 3
+    assert result["transactions"][0]["currency"] == "NZD"
 
 
 async def test_amount_filters_and_amount_raw_use_cents(
