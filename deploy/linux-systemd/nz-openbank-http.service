@@ -9,6 +9,8 @@ ConditionPathExists=/opt/nz-openbank-mcp/.venv/bin/nz-openbank-mcp-http
 Type=simple
 DynamicUser=yes
 WorkingDirectory=/opt/nz-openbank-mcp
+# Akahu values only. nz-openbank-tunnel.env holds the OpenAI tunnel key, which
+# this process does not use, so it is not loaded here.
 EnvironmentFile=/etc/nz-openbank-mcp/nz-openbank.env
 EnvironmentFile=/etc/nz-openbank-mcp/nz-openbank-http.env
 Environment=NZ_OPENBANK_MCP_STATE_DIR=/var/lib/nz-openbank-http

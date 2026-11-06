@@ -104,7 +104,8 @@ comes from a reverse proxy in front of a public URL such as
   holder acts as the same Akahu user, with no per-user separation.
 - **No application-level rate limiting.** The server adds no request or
   auth-attempt rate limiting of its own. Apply limits at the reverse proxy if
-  needed.
+  needed. The shipped Caddy example configures none; its commented
+  `rate_limit` block needs a Caddy built with the caddy-ratelimit plugin.
 - **Platform-level redirect allowlist.** The default callbacks admit any
   account on those platforms. The Google allowlist and the consent screen are
   the controls that keep strangers out.

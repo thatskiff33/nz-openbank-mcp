@@ -11,9 +11,12 @@ documented in `docs/public-https-streamable-http.md`.
   `tunnel-client run --profile nz-openbank` daemon.
 - `nz-openbank-http.service` - systemd unit for the authenticated Streamable HTTP
   MCP server.
-- `nz-openbank.env.example` - placeholder-only environment shared by both
+- `nz-openbank.env.example` - placeholder-only Akahu environment shared by both
   units. Copy this to `/etc/nz-openbank-mcp/nz-openbank.env` and fill values on
   the host only.
+- `nz-openbank-tunnel.env.example` - placeholder-only OpenAI tunnel values,
+  loaded only by `nz-openbank-tunnel.service`. Copy this to
+  `/etc/nz-openbank-mcp/nz-openbank-tunnel.env`.
 - `nz-openbank-http.env.example` - placeholder-only HTTP secrets, loaded only by
   `nz-openbank-http.service`. Copy this to
   `/etc/nz-openbank-mcp/nz-openbank-http.env`.
@@ -28,6 +31,7 @@ Expected host paths:
 /usr/local/bin/tunnel-client
 /opt/nz-openbank-mcp
 /etc/nz-openbank-mcp/nz-openbank.env
+/etc/nz-openbank-mcp/nz-openbank-tunnel.env
 /etc/nz-openbank-mcp/nz-openbank-http.env
 /etc/tunnel-client/profiles/nz-openbank.yaml
 /etc/systemd/system/nz-openbank-tunnel.service
@@ -37,7 +41,9 @@ Expected host paths:
 The tunnel runs as `nz-openbank-mcp`, not as root. The HTTP service runs under
 its own systemd dynamic user with state in `/var/lib/nz-openbank-http`, so the
 tunnel cannot read its secrets or OAuth state. `nz-openbank.env` is root-owned
-and readable only by the service group; `nz-openbank-http.env` is root-only.
+and readable only by the service group; `nz-openbank-tunnel.env` and
+`nz-openbank-http.env` are root-only, and each is loaded only by its own unit,
+so the HTTP process never receives the OpenAI runtime key.
 
 ## Install Commands
 
@@ -79,6 +85,10 @@ sudo install -o root -g nz-openbank-mcp -m 0640 \
   deploy/linux-systemd/nz-openbank.env.example \
   /etc/nz-openbank-mcp/nz-openbank.env
 sudoedit /etc/nz-openbank-mcp/nz-openbank.env
+sudo install -o root -g root -m 0600 \
+  deploy/linux-systemd/nz-openbank-tunnel.env.example \
+  /etc/nz-openbank-mcp/nz-openbank-tunnel.env
+sudoedit /etc/nz-openbank-mcp/nz-openbank-tunnel.env
 
 sudo install -d -o root -g root -m 0755 /etc/tunnel-client/profiles
 sudo install -o root -g root -m 0644 \
@@ -143,9 +153,10 @@ with the ChatGPT workspace. It requires:
   reverse proxy is on a separate host, bind to a private interface and firewall
   the listener so only the reverse proxy can reach it.
 - `NZ_OPENBANK_MCP_HTTP_PORT=8091`.
-- Caddy routing `https://mcp.example.com/openbank-mcp/*` to
-  `http://127.0.0.1:8091` with the `/openbank-mcp` prefix stripped, plus the OAuth
-  well-known routes documented in `docs/public-https-streamable-http.md`.
+- Caddy routing only the MCP path, the OAuth endpoints and the OAuth
+  well-known routes under `https://mcp.example.com/openbank-mcp` to
+  `http://127.0.0.1:8091` with the `/openbank-mcp` prefix stripped, as in
+  `deploy/caddy/nz-openbank-mcp.caddy.example`.
 
 OAuth mode requires:
 
@@ -182,10 +193,13 @@ commands.
 
 Only the operator may fill these values in `/etc/nz-openbank-mcp/nz-openbank.env`:
 
-- `CONTROL_PLANE_TUNNEL_ID`
-- `CONTROL_PLANE_API_KEY`
 - `AKAHU_APP_TOKEN`
 - `AKAHU_USER_TOKEN`
+
+these in `/etc/nz-openbank-mcp/nz-openbank-tunnel.env`:
+
+- `CONTROL_PLANE_TUNNEL_ID`
+- `CONTROL_PLANE_API_KEY`
 
 and these in `/etc/nz-openbank-mcp/nz-openbank-http.env`:
 
@@ -196,6 +210,6 @@ and these in `/etc/nz-openbank-mcp/nz-openbank-http.env`:
 - `NZ_OPENBANK_MCP_ALLOWED_USERS`
 - `NZ_OPENBANK_MCP_ALLOWED_DOMAINS`
 
-Do not put an OpenAI admin key in the env file or in the systemd unit. Admin
+Do not put an OpenAI admin key in any env file or in the systemd unit. Admin
 keys are for setup and tunnel-management commands only, not the long-running
 daemon.

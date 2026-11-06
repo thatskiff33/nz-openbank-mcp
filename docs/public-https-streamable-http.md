@@ -27,8 +27,8 @@ acceptable only with all of these controls in place:
   clients at Google OAuth endpoints directly.
 - OAuth mode requires a Google account allowlist through
   `NZ_OPENBANK_MCP_ALLOWED_USERS` or `NZ_OPENBANK_MCP_ALLOWED_DOMAINS`.
-- Caddy terminates public HTTPS and proxies only the `/openbank-mcp/*` path plus
-  the OAuth well-known metadata paths.
+- Caddy terminates public HTTPS and proxies only the MCP path, the OAuth
+  endpoints and the OAuth well-known metadata paths, with a 1MB body limit.
 - The MCP process binds to `127.0.0.1` when Caddy runs on the same host. If
   Caddy runs on a separate host, bind to a private interface and firewall the
   listener so only the reverse proxy can reach it.
@@ -235,30 +235,37 @@ docker run -d --name nz-openbank-http --restart unless-stopped \
   ghcr.io/thatskiff33/nz-openbank-mcp:X.Y.Z nz-openbank-mcp-http
 ```
 
-The image sets `NZ_OPENBANK_MCP_STATE_DIR=/var/lib/nz-openbank-mcp`.
+The image sets `NZ_OPENBANK_MCP_STATE_DIR=/var/lib/nz-openbank-mcp`. Do not
+pass `nz-openbank-tunnel.env`: it holds the OpenAI tunnel key, which the HTTP
+server does not use.
 
 ## Caddy Route
 
 Merge `deploy/caddy/nz-openbank-mcp.caddy.example` into the Caddy site that owns
-your connector hostname. The important route is:
+your connector hostname. It forwards only these public paths to the backend:
 
-```caddy
-handle /.well-known/oauth-protected-resource/openbank-mcp/mcp {
-    reverse_proxy http://127.0.0.1:8091
-}
+| Public path | Backend path |
+| --- | --- |
+| `/.well-known/oauth-protected-resource/openbank-mcp/mcp` | same |
+| `/.well-known/oauth-authorization-server/openbank-mcp` | same |
+| `/openbank-mcp/mcp` | `/mcp` |
+| `/openbank-mcp/authorize` | `/authorize` |
+| `/openbank-mcp/token` | `/token` |
+| `/openbank-mcp/register` | `/register` |
+| `/openbank-mcp/auth/callback` | `/auth/callback` |
+| `/openbank-mcp/consent` | `/consent` |
+| `/openbank-mcp/.well-known/oauth-authorization-server` | `/.well-known/oauth-authorization-server` |
 
-handle /.well-known/oauth-authorization-server/openbank-mcp {
-    reverse_proxy http://127.0.0.1:8091
-}
-
-handle_path /openbank-mcp/* {
-    reverse_proxy http://127.0.0.1:8091
-}
-```
-
-Use `handle_path` so public `/openbank-mcp/mcp` is proxied to backend `/mcp`.
+These are the routes the OAuth-mode server serves. Any other path under
+`/openbank-mcp` gets a 404 from Caddy, and request bodies over 1MB get a 413.
 The root well-known routes are required for OAuth protected-resource and
-path-aware authorization-server discovery.
+path-aware authorization-server discovery. If you change
+`NZ_OPENBANK_MCP_PUBLIC_BASE_URL` or `NZ_OPENBANK_MCP_HTTP_PATH`, change the
+paths in the Caddy file to match.
+
+The example configures no rate limit. It includes a commented `rate_limit`
+block for the OAuth endpoints, which works only in a Caddy built with the
+[caddy-ratelimit](https://github.com/mholt/caddy-ratelimit) plugin.
 
 Verify and reload Caddy:
 

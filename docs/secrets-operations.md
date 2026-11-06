@@ -17,16 +17,26 @@ The live secret files are:
 
 ```text
 /etc/nz-openbank-mcp/nz-openbank.env
+/etc/nz-openbank-mcp/nz-openbank-tunnel.env
 /etc/nz-openbank-mcp/nz-openbank-http.env
 ```
 
-`nz-openbank.env` is shared by both units and contains only runtime values:
+`nz-openbank.env` is shared by both units and contains only Akahu values:
 
-- `CONTROL_PLANE_TUNNEL_ID`
-- `CONTROL_PLANE_API_KEY`
 - `AKAHU_APP_TOKEN`
 - `AKAHU_USER_TOKEN`
 - safety and logging settings
+
+`nz-openbank-tunnel.env` is loaded only by `nz-openbank-tunnel.service`, so
+the HTTP process never receives the OpenAI runtime key:
+
+- `CONTROL_PLANE_TUNNEL_ID`
+- `CONTROL_PLANE_API_KEY`
+- `tunnel-client` logging settings
+
+The tunnel launches the stdio server as a child process that takes its Akahu
+values from the tunnel's environment, so treat that child as able to see
+`CONTROL_PLANE_API_KEY` too.
 
 `nz-openbank-http.env` is loaded only by `nz-openbank-http.service`, which runs
 under its own dynamic user, so the tunnel process cannot read
@@ -39,7 +49,7 @@ The systemd unit is:
 /etc/systemd/system/nz-openbank-tunnel.service
 ```
 
-The unit must reference the env file. It must not contain token values.
+The unit must reference the env files. It must not contain token values.
 
 The server does not read this file by itself. systemd loads it through
 `EnvironmentFile=`; for manual runs, either source it into the shell or set
@@ -54,6 +64,8 @@ Set root ownership and service-group read access:
 sudo install -d -o root -g nz-openbank-mcp -m 0750 /etc/nz-openbank-mcp
 sudo chown root:nz-openbank-mcp /etc/nz-openbank-mcp/nz-openbank.env
 sudo chmod 0640 /etc/nz-openbank-mcp/nz-openbank.env
+sudo chown root:root /etc/nz-openbank-mcp/nz-openbank-tunnel.env
+sudo chmod 0600 /etc/nz-openbank-mcp/nz-openbank-tunnel.env
 sudo chown root:root /etc/nz-openbank-mcp/nz-openbank-http.env
 sudo chmod 0600 /etc/nz-openbank-mcp/nz-openbank-http.env
 ```
@@ -70,7 +82,22 @@ Expected pass:
 ```text
 root:nz-openbank-mcp 750 /etc/nz-openbank-mcp
 root:root 600 /etc/nz-openbank-mcp/nz-openbank-http.env
+root:root 600 /etc/nz-openbank-mcp/nz-openbank-tunnel.env
 root:nz-openbank-mcp 640 /etc/nz-openbank-mcp/nz-openbank.env
+```
+
+Confirm the shared file holds no OpenAI tunnel values. Hosts set up before the
+split kept `CONTROL_PLANE_TUNNEL_ID`, `CONTROL_PLANE_API_KEY`, `LOG_LEVEL` and
+`LOG_FORMAT` in `nz-openbank.env`; move them to `nz-openbank-tunnel.env`.
+
+```bash
+sudo grep -cE '^(CONTROL_PLANE_|LOG_LEVEL=|LOG_FORMAT=)' /etc/nz-openbank-mcp/nz-openbank.env || true
+```
+
+Expected pass:
+
+```text
+0
 ```
 
 Verify the read-only safety defaults:
@@ -143,6 +170,7 @@ rotated.
    ```bash
    set -a
    . /etc/nz-openbank-mcp/nz-openbank.env
+   . /etc/nz-openbank-mcp/nz-openbank-tunnel.env
    set +a
    tunnel-client doctor --profile nz-openbank --profile-dir /etc/tunnel-client/profiles --explain
    ```
@@ -229,10 +257,10 @@ runtime principal changes.
 2. Create a new Runtime API key for the tunnel daemon principal.
 3. Confirm the principal has Tunnels Read + Use for the target tunnel.
 4. Stop the service.
-5. Edit the env file:
+5. Edit the tunnel env file:
 
    ```bash
-   sudoedit /etc/nz-openbank-mcp/nz-openbank.env
+   sudoedit /etc/nz-openbank-mcp/nz-openbank-tunnel.env
    ```
 
 6. Replace only `CONTROL_PLANE_API_KEY`.
@@ -242,6 +270,7 @@ runtime principal changes.
    ```bash
    set -a
    . /etc/nz-openbank-mcp/nz-openbank.env
+   . /etc/nz-openbank-mcp/nz-openbank-tunnel.env
    set +a
    tunnel-client doctor --profile nz-openbank --profile-dir /etc/tunnel-client/profiles --explain
    ```
@@ -255,7 +284,7 @@ temporary outage.
 ## Admin API Key Rule
 
 OpenAI Admin API keys are for short-lived tunnel management commands only. They
-must not be stored in systemd or in `/etc/nz-openbank-mcp/nz-openbank.env`.
+must not be stored in systemd or in any env file under `/etc/nz-openbank-mcp`.
 
 Safe check for accidental admin-key variable names:
 
