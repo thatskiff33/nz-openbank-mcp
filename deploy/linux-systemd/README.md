@@ -1,9 +1,10 @@
 # Linux Systemd Deployment Assets
 
-These assets run `nz-openbank-mcp` on a Linux host. The secure default deployment
-uses OpenAI Secure MCP Tunnel and does not publish a public MCP endpoint.
-`nz-openbank-http.service` is the explicit public HTTPS Streamable HTTP exception
-documented in `docs/public-https-streamable-http.md`.
+These assets run `nz-openbank-mcp` on a Linux host in one of two ways:
+`nz-openbank-tunnel.service` connects through OpenAI Secure MCP Tunnel and
+publishes no public MCP endpoint; `nz-openbank-http.service` is the public
+HTTPS Streamable HTTP deployment documented in
+`docs/public-https-streamable-http.md`.
 
 ## Files
 
@@ -140,10 +141,10 @@ AKAHU_READ_ONLY=true
 AKAHU_AUTOMATION_BYPASS=false
 ```
 
-## Public HTTPS Exception
+## Public HTTPS Service
 
-Use `nz-openbank-http.service` only when Secure MCP Tunnel cannot be associated
-with the ChatGPT workspace. It requires:
+Use `nz-openbank-http.service` for web connectors that need a public HTTPS URL
+(claude.ai, ChatGPT, grok.com). It requires:
 
 - `NZ_OPENBANK_MCP_AUTH_MODE=oauth` with the Google OAuth vars filled. Bearer
   mode remains available only for approved clients that cannot use OAuth, and

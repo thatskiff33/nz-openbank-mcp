@@ -43,7 +43,7 @@ The 0.1.5 GitHub Release has no files attached. Its package is on PyPI and GHCR;
 ## 0.1.3 - 2026-11-01
 
 - OAuth: refused Google accounts are rejected before any upstream tokens are stored; expired OAuth state is culled hourly; low-diversity bearer tokens and signing keys are rejected.
-- Deployment: HTTP-only secrets moved to `nz-openbank-http.env`, and `nz-openbank-http.service` runs under its own dynamic user with state in `/var/lib/nz-openbank-http`.
+- Deployment: HTTP-only secrets moved to `nz-openbank-http.env`, and `nz-openbank-http.service` runs under its own dynamic user with state in `/var/lib/nz-openbank-http`. To upgrade from 0.1.2 or earlier, move the `NZ_OPENBANK_MCP_*` values into `nz-openbank-http.env`, install the new unit, then delete the old OAuth state (`sudo rm -rf /var/lib/nz-openbank-mcp/oauth-proxy /var/lib/nz-openbank-mcp/fastmcp /var/lib/nz-openbank-mcp/.local/share/fastmcp`); connectors sign in again afterwards.
 - Akahu client: only idempotent requests are retried, malformed responses raise clear errors, and transaction paging is capped with a `truncated` flag.
 - Write consent prompts quote and escape every value and are bound to the exact prompt text.
 - Money values are exact decimals end to end.

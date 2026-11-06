@@ -364,12 +364,12 @@ docker ps --format '{{.Names}} {{.Ports}}' | grep -Ei 'akahu|mcp|8080' || true
 
 Expected pass: no unplanned Caddy, nginx, Docker, or ngrok-style route
 forwards public traffic to this MCP service. The only planned public route is
-the authenticated exception in `docs/public-https-streamable-http.md`.
+the authenticated public HTTPS deployment in `docs/public-https-streamable-http.md`.
 
 ## Do Not Do This
 
 - Do not expose `nz-openbank-mcp` through public Caddy or nginx routing except
-  for the authenticated public HTTPS exception documented in
+  for the authenticated public HTTPS deployment documented in
   `docs/public-https-streamable-http.md`.
 - Do not use ngrok or another public tunnel for this banking MCP surface.
 - Do not put OpenAI Admin API keys in systemd, env files, wrapper scripts, or

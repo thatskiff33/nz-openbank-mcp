@@ -41,8 +41,8 @@ boundaries, mitigations and residual risks in detail.
   - `oauth`: the server is the OAuth authorization server with Google as the
     identity provider. Access is limited to allowlisted verified emails or
     Google Workspace domains (hosted-domain claim); client redirect URIs are
-    limited to an allowlist (the Claude and ChatGPT connector callbacks and
-    loopback by default); tokens are signed with an explicit key and OAuth
+    limited to an allowlist (the Claude, ChatGPT and Cursor connector callbacks
+    and loopback by default); tokens are signed with an explicit key and OAuth
     state is stored encrypted.
 - **No logging of secrets or financial data.** Tokens are held as secret types,
   hidden from reprs and validation errors. Balances and transaction contents

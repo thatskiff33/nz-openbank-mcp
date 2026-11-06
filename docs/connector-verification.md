@@ -12,8 +12,8 @@ issues, PRs, chat, or logs.
 - `AKAHU_AUTOMATION_BYPASS=false`.
 - For ChatGPT Business, `tunnel-client` has passed
   `tunnel-client doctor --profile nz-openbank --explain`.
-- For the public HTTPS exception, `NZ_OPENBANK_MCP_BEARER_TOKEN` is present only in
-  the runtime environment and approved MCP clients.
+- For a bearer-mode public HTTPS deployment, `NZ_OPENBANK_MCP_BEARER_TOKEN`
+  is present only in the runtime environment and approved MCP clients.
 - For ChatGPT and Claude web public HTTPS connectors,
   `NZ_OPENBANK_MCP_AUTH_MODE=oauth`, Google OAuth credentials,
   `NZ_OPENBANK_MCP_PUBLIC_BASE_URL`, and an allowlist are present only in the
@@ -21,11 +21,9 @@ issues, PRs, chat, or logs.
 - For Claude, use Claude Code, Claude Desktop, the `.mcpb` Desktop Extension,
   or a local/manual MCP config.
 
-ChatGPT and Claude web connectors are not part of the secure default rollout
-unless the explicit public HTTPS OAuth exception is deployed. They require a
-remote endpoint reachable from the vendor cloud, so keep the no-public-MCP
-baseline unless OAuth mode, HTTPS, Google login, and the Google account
-allowlist are all in place.
+ChatGPT and Claude web connectors need the public HTTPS OAuth deployment:
+a remote endpoint reachable from the vendor cloud, with OAuth mode, HTTPS,
+Google login and the Google account allowlist all in place.
 
 ## Local Tool List
 
@@ -116,9 +114,9 @@ tunnel-client doctor --profile nz-openbank --explain
 Do not fix discovery failures by adding public Caddy, nginx, ngrok, or other
 public ingress.
 
-## Public HTTPS Connector Discovery Exception
+## Public HTTPS Connector Discovery (Bearer Mode)
 
-Use this only while Secure MCP Tunnel is blocked by org/workspace association.
+Use this for a bearer-mode public HTTPS deployment.
 The connector URL is:
 
 ```text
@@ -279,7 +277,9 @@ claude mcp get nz-openbank
 
 Expected pass:
 
-- `/mcp` or `claude mcp list` shows `nz-openbank` or `nz-openbank-mcp` connected.
+- `/mcp` or `claude mcp list` shows the server connected: `akahu` when
+  installed as the plugin, or the name given to `claude mcp add` (for example
+  `nz-openbank`).
 - A read prompt can call `acct_list_accounts` and returns account details.
 - A write prompt refuses while read-only mode is true.
 

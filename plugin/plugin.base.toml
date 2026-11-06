@@ -83,7 +83,7 @@ title = "Mask account numbers"
 description = "When 'true', account numbers show only the bank code, last four digits and suffix. Default 'false' shows them in full. Transaction descriptions are never masked."
 default = "false"
 
-# Tool list shown by hosts before install. tests/test_manifests.py checks it
+# Tool list shown by hosts before install. tests/test_plugin_manifests.py checks it
 # against the server's tools.
 
 [[tool]]

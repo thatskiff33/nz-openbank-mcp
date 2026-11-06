@@ -32,7 +32,7 @@ uv run mypy src                                 # strict
 uv export --frozen --no-emit-project --all-extras --format requirements-txt \
   | uv run pip-audit --strict --disable-pip --require-hashes -r /dev/stdin
 uv run --no-project python scripts/sync_plugin_manifests.py --check
-uv run --no-project python scripts/check_packaging.py   # version lockstep, package contents
+uv run --no-project python scripts/check_packaging.py   # manifests, launch pins, version lockstep
 uv run --no-project python scripts/check_md_links.py    # repo-relative Markdown links resolve
 ```
 

@@ -18,10 +18,10 @@ Use Secure MCP Tunnel for this deployment because the MCP server stays private
 and `tunnel-client` connects outbound to OpenAI from the host that can already
 reach the local stdio server.
 
-A public reverse proxy is out of scope for the secure default. If Platform-org
-and ChatGPT-workspace association blocks Secure MCP Tunnel, use the narrow
-exception in `docs/public-https-streamable-http.md` instead of improvising a
-different public ingress.
+This path needs no public reverse proxy. If Platform-org and
+ChatGPT-workspace association blocks Secure MCP Tunnel, use the public HTTPS
+deployment in `docs/public-https-streamable-http.md` rather than a different
+public ingress.
 
 ## Required Operator Values
 
@@ -188,5 +188,6 @@ target workspace and that the connector operator has Tunnels Read + Use.
 - ChatGPT tool calls fail after setup: check the local `/readyz` endpoint and
   restart `nz-openbank-tunnel.service` if the daemon is not ready.
 
-Do not fix any of these failures by adding public ingress. The secure default is
-an outbound tunnel from the trusted host.
+Do not fix any of these failures by adding public ingress. This deployment
+uses an outbound tunnel from the trusted host; for a public endpoint, use
+`docs/public-https-streamable-http.md`.
