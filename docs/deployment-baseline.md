@@ -39,15 +39,16 @@ Run the HTTP server as a single process. On 2026-07-28 MCP connections, write
 consent spans two requests and its state is held in process memory, so a
 retry that lands on another worker is refused.
 
-The default deployment must not expose this banking MCP surface through public
-Caddy, nginx, ngrok, or another internet-reachable reverse proxy. A public
-endpoint turns a local personal-banking tool into a remote attack surface.
+Apart from the public HTTPS deployment below, do not expose this banking MCP
+surface through Caddy, nginx, ngrok, or another internet-reachable reverse
+proxy. A public endpoint turns a local personal-banking tool into a remote
+attack surface.
 
 The public HTTPS deployment in `docs/public-https-streamable-http.md` is the
 documented way to expose the server to web connectors. It requires OAuth mode
-for ChatGPT and Claude web
-connectors, public HTTPS, a backend listener bound only to loopback or a
-private interface, and the same read-only defaults above. Bearer mode remains
+for ChatGPT and Claude web connectors, public HTTPS, a backend listener bound
+only to loopback or a private interface, and the same read-only defaults
+above. Bearer mode remains
 available for approved clients that cannot use OAuth.
 
 ## Client Paths

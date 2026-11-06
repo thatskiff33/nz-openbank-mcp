@@ -188,5 +188,6 @@ target workspace and that the connector operator has Tunnels Read + Use.
 - ChatGPT tool calls fail after setup: check the local `/readyz` endpoint and
   restart `nz-openbank-tunnel.service` if the daemon is not ready.
 
-Do not fix any of these failures by adding public ingress. The secure default is
-an outbound tunnel from the trusted host.
+Do not fix any of these failures by adding public ingress. This deployment
+uses an outbound tunnel from the trusted host; for a public endpoint, use
+`docs/public-https-streamable-http.md`.
