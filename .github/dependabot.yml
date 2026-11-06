@@ -23,6 +23,13 @@ updates:
   # Hash-pinned build backend for `uv build` (.github/build-constraints).
   - package-ecosystem: pip
     directory: /.github/build-constraints
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      build-backend:
+        patterns: ["*"]
 
   # Base image digests in the Dockerfile.
   - package-ecosystem: docker
@@ -36,7 +43,5 @@ updates:
       - dependency-name: "*"
         update-types: ["version-update:semver-major", "version-update:semver-minor"]
     groups:
-      build-backend:
-
       docker:
         patterns: ["*"]
