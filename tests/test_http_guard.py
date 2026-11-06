@@ -224,3 +224,49 @@ def test_http_main_passes_configured_hosts_without_warning(
     assert captured["allowed_hosts"] == [PUBLIC_HOST]
     assert captured["allowed_origins"] == [f"https://{PUBLIC_HOST}"]
     assert "NZ_OPENBANK_MCP_ALLOWED_HOSTS" not in caplog.text
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://*.example.com/openbank-mcp",
+        "https://user@mcp.example.com/openbank-mcp",
+        "https://mcp example.com/openbank-mcp",
+    ],
+)
+def test_oauth_public_base_url_host_must_be_plain(url: str) -> None:
+    from nz_openbank_mcp.config import McpOAuthConfig
+
+    with pytest.raises(ValidationError, match="plain host"):
+        McpOAuthConfig(
+            google_client_id="client-id.apps.googleusercontent.com",
+            google_client_secret=SecretStr("client-secret"),
+            public_base_url=url,
+            allowed_users="owner@example.com",
+            jwt_signing_key=SecretStr("jwt-signing-key-0123456789abcdef0123456789"),
+            state_dir=STATE_DIR,
+        )
+
+
+def test_allowed_hosts_accept_underscores_and_ipv6(fake_env: None) -> None:
+    from nz_openbank_mcp.config import McpHttpConfig
+
+    cfg = McpHttpConfig(bearer_token=SecretStr(BEARER), allowed_hosts="nz_openbank:8091,[::1]:8091")
+    assert cfg.allowed_host_list == ["nz_openbank:8091", "[::1]:8091"]
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/.well-known/oauth-authorization-server/openbank-mcp",
+        "/.well-known/oauth-protected-resource/openbank-mcp/mcp",
+        "/token",
+        "/register",
+        "/authorize",
+    ],
+)
+def test_oauth_routes_are_guarded_too(fake_env: None, path: str) -> None:
+    """The guard covers OAuth and metadata routes, not only the MCP endpoint."""
+    with TestClient(_oauth_app()) as client:
+        assert client.get(path, headers={"host": "evil.example"}).status_code == 421
+        assert client.get(path, headers={"host": PUBLIC_HOST}).status_code != 421

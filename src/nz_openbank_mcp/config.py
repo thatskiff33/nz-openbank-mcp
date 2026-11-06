@@ -47,7 +47,7 @@ DEFAULT_ALLOWED_REDIRECT_URIS = (
 )
 _LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 # host or host:port; a bracketed IPv6 address is allowed. No scheme, path or wildcard.
-_HOST_ENTRY = re.compile(r"(?:\[[0-9a-f:.]+\]|[a-z0-9.-]+)(?::(\d{1,5}))?")
+_HOST_ENTRY = re.compile(r"(?:\[[0-9a-f:.]+\]|[a-z0-9._-]+)(?::(\d{1,5}))?")
 _MAX_PORT = 65535
 # Windows reports every file as group/other writable, so the mode check is POSIX only.
 _POSIX = os.name == "posix"
@@ -288,7 +288,7 @@ class McpHttpConfig(_Settings):
             if match is None or (match.group(1) and not 1 <= int(match.group(1)) <= _MAX_PORT):
                 raise ValueError(
                     "allowed host must be host or host:port, without scheme, path or "
-                    f"wildcard: {entry}"
+                    f"wildcard (use the punycode form of an international name): {entry}"
                 )
         return value
 
@@ -415,6 +415,11 @@ class McpOAuthConfig(_Settings):
             raise ValueError("oauth public base url must use https")
         if not parsed.netloc:
             raise ValueError("oauth public base url must include a host")
+        if not _HOST_ENTRY.fullmatch(parsed.netloc.lower()):
+            raise ValueError(
+                "oauth public base url must have a plain host or host:port, without "
+                "credentials or wildcards"
+            )
         if parsed.query:
             raise ValueError("oauth public base url must not include a query string")
         if parsed.fragment:
