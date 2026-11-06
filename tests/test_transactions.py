@@ -747,7 +747,7 @@ async def test_get_transactions_reports_truncation_at_page_cap(
     monkeypatch.setattr(client_mod, "MAX_PAGES", 2)
     patched_client.iter_transactions = MagicMock(side_effect=lambda **_: _endless_pages(_txn()))
     result = await get_transactions(category="none-match")
-    assert result == {"transactions": [], "truncated": True}
+    assert result == {"transactions": [], "truncated": True, "limit_reached": False}
 
 
 async def test_search_reports_truncation_at_page_cap(
@@ -761,9 +761,10 @@ async def test_search_reports_truncation_at_page_cap(
     result = await search_transactions(query="foo", limit=10)
     assert len(result["transactions"]) == 2
     assert result["truncated"] is True
+    assert result["limit_reached"] is False
 
 
-async def test_reaching_limit_before_cap_is_not_truncated(
+async def test_search_reaching_limit_reports_limit_reached_not_truncated(
     fake_env: None, patched_client: MagicMock
 ) -> None:
     from nz_openbank_mcp.tools.transactions import search_transactions
@@ -772,6 +773,188 @@ async def test_reaching_limit_before_cap_is_not_truncated(
     result = await search_transactions(query="foo", limit=3)
     assert len(result["transactions"]) == 3
     assert result["truncated"] is False
+    assert result["limit_reached"] is True
+
+
+# ---------- limit_reached (COR-01) ----------
+
+
+def _one_page_of(count: int) -> TransactionPages:
+    txns = [_txn(_id=f"txn_{i}") for i in range(count)]
+    return _async_iter(txns)
+
+
+async def test_get_transactions_flags_a_limit_cut_off(
+    fake_env: None, patched_client: MagicMock
+) -> None:
+    """150 transactions in range with limit 100: the result must say it is incomplete."""
+    from nz_openbank_mcp.tools.transactions import get_transactions
+
+    patched_client.iter_transactions = MagicMock(side_effect=lambda **_: _one_page_of(150))
+    result = await get_transactions(start_date="2026-10-01", end_date="2026-10-31")
+    assert len(result["transactions"]) == 100
+    assert result["truncated"] is False
+    assert result["limit_reached"] is True
+
+
+async def test_get_transactions_within_limit_is_not_flagged(
+    fake_env: None, patched_client: MagicMock
+) -> None:
+    from nz_openbank_mcp.tools.transactions import get_transactions
+
+    patched_client.iter_transactions = MagicMock(side_effect=lambda **_: _one_page_of(99))
+    result = await get_transactions()
+    assert len(result["transactions"]) == 99
+    assert result["truncated"] is False
+    assert result["limit_reached"] is False
+
+
+async def test_search_within_limit_is_not_flagged(
+    fake_env: None, patched_client: MagicMock
+) -> None:
+    from nz_openbank_mcp.tools.transactions import search_transactions
+
+    patched_client.iter_transactions = MagicMock(side_effect=lambda **_: _one_page_of(5))
+    result = await search_transactions(query="foo", limit=50)
+    assert len(result["transactions"]) == 5
+    assert result["limit_reached"] is False
+
+
+async def test_page_cap_is_truncated_without_limit_reached(
+    fake_env: None, patched_client: MagicMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import nz_openbank_mcp.client as client_mod
+    from nz_openbank_mcp.tools.transactions import get_transactions
+
+    monkeypatch.setattr(client_mod, "MAX_PAGES", 2)
+    patched_client.iter_transactions = MagicMock(side_effect=lambda **_: _endless_pages(_txn()))
+    result = await get_transactions(limit=10)
+    assert result["truncated"] is True
+    assert result["limit_reached"] is False
+
+
+async def test_tool_descriptions_explain_limit_reached(fake_env: None) -> None:
+    from nz_openbank_mcp.server import build_server
+
+    async with Client(build_server()) as c:
+        tools = {t.name: t for t in await c.list_tools()}
+    for name in ("txn_get_transactions", "txn_search_transactions"):
+        assert "limit_reached" in (tools[name].description or "")
+
+
+# ---------- currency lookup runs alongside the scan (PERF-01) ----------
+
+
+@pytest.mark.parametrize("tool", ["get_transactions", "search_transactions"])
+async def test_accounts_lookup_does_not_delay_the_first_page(
+    fake_env: None, patched_client: MagicMock, tool: str
+) -> None:
+    """/accounts only answers once a page was requested; a serial lookup would hang."""
+    import asyncio
+
+    from nz_openbank_mcp.tools import transactions
+
+    page_requested = asyncio.Event()
+
+    async def page(_cursor: str | None) -> tuple[list[Transaction], str | None]:
+        page_requested.set()
+        return [_txn(description="foo")], None
+
+    async def slow_accounts() -> list[Account]:
+        await page_requested.wait()
+        return _fake_accounts()
+
+    patched_client.iter_transactions = MagicMock(side_effect=lambda **_: TransactionPages(page))
+    patched_client.list_accounts = slow_accounts
+    call = getattr(transactions, tool)
+    kwargs = {"query": "foo"} if tool == "search_transactions" else {}
+    async with asyncio.timeout(2):
+        result = await call(**kwargs)
+    assert result["transactions"][0]["currency"] == "NZD"
+
+
+async def test_transactions_on_account_without_balance_currency_have_no_currency(
+    fake_env: None, patched_client: MagicMock
+) -> None:
+    """COR-02: an account whose balance has no currency gives currency None, not NZD."""
+    from nz_openbank_mcp.tools.transactions import get_transactions
+
+    item = load_fixture("accounts")["items"][0]
+    no_currency = Account.model_validate({**item, "balance": {"current": 1.0}})
+    patched_client.list_accounts = AsyncMock(return_value=[no_currency])
+    patched_client.iter_transactions = MagicMock(
+        side_effect=lambda **_: _async_iter([_txn(_account=no_currency.id, amount=-1234.5)])
+    )
+    t0 = (await get_transactions())["transactions"][0]
+    assert t0["currency"] is None
+    assert t0["amount"] == "-1,234.50"
+
+
+async def test_accounts_lookup_failure_cancels_the_scan_and_is_raised_as_itself(
+    fake_env: None, patched_client: MagicMock
+) -> None:
+    import asyncio
+
+    from nz_openbank_mcp.tools.transactions import get_transactions
+
+    page_started = asyncio.Event()
+    page_cancelled = asyncio.Event()
+
+    async def stuck_page(_cursor: str | None) -> tuple[list[Transaction], str | None]:
+        page_started.set()
+        try:
+            await asyncio.Event().wait()  # never answers
+        except asyncio.CancelledError:
+            page_cancelled.set()
+            raise
+        raise AssertionError("unreachable")  # pragma: no cover
+
+    async def failing_accounts() -> list[Account]:
+        await page_started.wait()
+        raise ToolError("accounts down")
+
+    pages = TransactionPages(stuck_page)
+    patched_client.iter_transactions = MagicMock(side_effect=lambda **_: pages)
+    patched_client.list_accounts = failing_accounts
+    async with asyncio.timeout(2):
+        with pytest.raises(ToolError, match="accounts down"):
+            await get_transactions()
+    assert page_cancelled.is_set()
+
+
+async def test_currency_lookup_overlaps_the_first_page_on_the_real_client(
+    fake_env: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Through AkahuClient and httpx: /accounts answers only after /transactions was requested."""
+    import asyncio
+
+    import httpx
+    import respx
+
+    from nz_openbank_mcp import deps
+    from nz_openbank_mcp.tools.transactions import get_transactions
+
+    monkeypatch.setattr(deps, "_client", None)
+    page_requested = asyncio.Event()
+
+    async def transactions_route(_request: httpx.Request) -> httpx.Response:
+        page_requested.set()
+        return httpx.Response(200, json=load_fixture("transactions"))
+
+    async def accounts_route(_request: httpx.Request) -> httpx.Response:
+        await page_requested.wait()
+        return httpx.Response(200, json=load_fixture("accounts"))
+
+    try:
+        with respx.mock(base_url="https://api.akahu.io/v1", assert_all_called=True) as router:
+            router.get("/transactions").mock(side_effect=transactions_route)
+            router.get("/accounts").mock(side_effect=accounts_route)
+            async with asyncio.timeout(2):
+                result = await get_transactions()
+    finally:
+        await deps.aclose_client()
+    assert len(result["transactions"]) == 3
+    assert result["transactions"][0]["currency"] == "NZD"
 
 
 async def test_amount_filters_and_amount_raw_use_cents(
