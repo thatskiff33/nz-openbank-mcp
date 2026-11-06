@@ -124,7 +124,8 @@ Jobs:
   environment approval, then publishes to PyPI. Nothing is published unless
   both builds and the changelog check passed.
 - `publish-image` (publish only, after `publish`) builds the amd64 and arm64
-  image, pushes it to `ghcr.io/thatskiff33/nz-openbank-mcp` tagged `X.Y.Z`,
+  image from the wheel the `build` job made (the image build runs no build
+  backend), pushes it to `ghcr.io/thatskiff33/nz-openbank-mcp` tagged `X.Y.Z`,
   `X.Y` and `latest`, and attests its provenance. The first push creates the
   package as private; set it to public once under the package's settings.
 - `publish-registry` (publish only, after `publish`) verifies a pinned

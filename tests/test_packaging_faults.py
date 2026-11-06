@@ -147,6 +147,63 @@ def test_dockerfile_safe_env_only_in_build_stage_is_caught(checkout: Path) -> No
     assert "AKAHU_READ_ONLY=true in the final stage" in result.stderr
 
 
+@pytest.mark.parametrize(
+    ("old", "new", "message"),
+    [
+        # uv sync building and installing the project itself.
+        (
+            "uv sync --frozen --no-dev --no-install-project --no-build",
+            "uv sync --frozen --no-dev --no-editable",
+            "uv sync needs --no-install-project and --no-build",
+        ),
+        (
+            "uv sync --frozen --no-dev --no-install-project --no-build",
+            "uv sync --frozen --no-dev --no-install-project",
+            "uv sync needs --no-install-project and --no-build",
+        ),
+        (
+            '--no-deps --no-build "$1"',
+            '--no-deps "$1"',
+            "pip install needs --no-build",
+        ),
+    ],
+)
+def test_dockerfile_must_not_build_the_package(
+    checkout: Path, old: str, new: str, message: str
+) -> None:
+    dockerfile = checkout / "Dockerfile"
+    text = dockerfile.read_text(encoding="utf-8")
+    assert text.count(old) == 1
+    dockerfile.write_text(text.replace(old, new), "utf-8")
+    result = _check(checkout)
+    assert result.returncode == 1
+    assert f"Dockerfile: {message}" in result.stderr
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        "RUN uv build --wheel\n",
+        "RUN true && uv run nz-openbank-mcp --help\n",
+        'RUN ["uv", "sync", "--frozen"]\n',
+        "RUN python -m build\n",
+        "RUN uvx hatch build\n",
+        "RUN pip install .\n",
+        "RUN <<EOF\nuv sync\nEOF\n",
+    ],
+)
+def test_dockerfile_extra_build_step_is_caught(checkout: Path, extra: str) -> None:
+    dockerfile = checkout / "Dockerfile"
+    text = dockerfile.read_text(encoding="utf-8")
+    anchor = "COPY dist/ /tmp/dist/\n"
+    assert text.count(anchor) == 1
+    dockerfile.write_text(text.replace(anchor, anchor + extra), "utf-8")
+    result = _check(checkout)
+    assert result.returncode == 1
+    assert "Dockerfile: " in result.stderr
+    assert "ENV must set" not in result.stderr
+
+
 def test_claude_marketplace_must_point_at_plugin(checkout: Path) -> None:
     shutil.copytree(checkout / "plugin", checkout / "other-plugin")
     _edit_json(

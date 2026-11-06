@@ -10,7 +10,8 @@ Grok: env values are placeholders only (no literal values), Codex forwards
 exactly the declared variables, Cursor and Grok carry the same safe inline
 defaults, and every marketplace index points at plugin/. server.json marks the
 tokens secret with no default and carries the pinned defaults; no sensitive key
-has a default anywhere; the Dockerfile keeps the safe AKAHU_* defaults; and
+has a default anywhere; the Dockerfile keeps the safe AKAHU_* defaults and
+runs no build backend (uv sync and pip install carry --no-build); and
 examples/claude_desktop_config.json runs the pinned release with safe values.
 No root .mcp.json or portable plugin/plugin.json may exist. Exits non-zero on
 any failure. `--root DIR` checks another checkout (used by the tests).
@@ -35,6 +36,10 @@ PINNED_DEFAULTS = {
     "akahu_mask_accounts": "false",
 }
 SENSITIVE_KEYS = {"akahu_user_token", "akahu_app_token"}
+# Commands that run a build backend, which the image build must never do.
+BUILDS_PACKAGE = re.compile(
+    r"\buv\s+(build|run|tool|pip\s+(wheel|compile))\b|\buvx\b|\bpip\s+wheel\b|-m\s+build\b"
+)
 
 errors: list[str] = []
 
@@ -152,6 +157,25 @@ def check_dockerfile() -> None:
         values = re.findall(rf"\b{var}=(\S+)", final_stage)
         if not values or values[-1].rstrip("\\") != value:
             fail(f"Dockerfile: ENV must set {var}={value} in the final stage")
+    # The image installs a wheel built with the hash-pinned backend, so no
+    # RUN command may start a build backend.
+    for line in re.sub(r"\\\r?\n", " ", text).splitlines():
+        if not re.match(r"(?i)\s*RUN\b", line):
+            continue
+        if "<<" in line:
+            fail("Dockerfile: RUN heredocs are not checked; use shell-form RUN")
+        # Exec form ["uv", "sync"] reads the same as shell form once unquoted.
+        for command in re.split(r";|&&|\|\|?", re.sub(r'[\[\]",]', " ", line)):
+            words = command.split()
+            shown = " ".join(words)
+            if BUILDS_PACKAGE.search(command):
+                fail(f"Dockerfile: RUN must not build the package: {shown}")
+            if re.search(r"\buv\s+sync\b", command) and not (
+                "--no-install-project" in words and "--no-build" in words
+            ):
+                fail(f"Dockerfile: uv sync needs --no-install-project and --no-build: {shown}")
+            if re.search(r"\bpip\s+install\b", command) and "--no-build" not in words:
+                fail(f"Dockerfile: pip install needs --no-build: {shown}")
 
 
 def check_example(version: str, keys: set[str]) -> None:
