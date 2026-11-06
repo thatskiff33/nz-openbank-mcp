@@ -47,6 +47,8 @@ Already done for this repository; repeat only if it is moved or renamed.
 1. **Bump the version** in a PR:
    - `pyproject.toml` `[project] version`
    - `src/nz_openbank_mcp/__init__.py` `__version__`
+   - `CHANGELOG.md`: rename `## Unreleased` to `## X.Y.Z - <date>`. The release
+     build fails, even for the TestPyPI dry run, if this section is missing.
    - then regenerate every manifest and launch pin:
 
      ```bash
@@ -105,17 +107,22 @@ Jobs:
   progress. Tag the merge commit itself; a commit whose push run was skipped
   cannot be released.
 - `build` asserts the pyproject version matches the tag, runs
-  `scripts/check_packaging.py`, then `uv build`.
-- `publish-testpypi` (dry run only) uploads to TestPyPI.
+  `scripts/check_packaging.py`, extracts the `## X.Y.Z - <date>` section of
+  `CHANGELOG.md` as the release notes (failing if it is missing), then runs
+  `uv build` with the hash-pinned build backend in `.github/build-constraints/`.
 - `build-mcpb` packs `nz-openbank-mcp-X.Y.Z.mcpb` with a pinned
   `@anthropic-ai/mcpb`, asserts the manifest version matches the tag, and
-  checks the packed manifest matches `mcpb/manifest.json`.
+  checks with `scripts/check_mcpb_bundle.py` that every file in the bundle
+  matches `mcpb/`.
+- `publish-testpypi` (dry run only, after `build` and `build-mcpb`) uploads to
+  TestPyPI.
 - `github-release` (publish only, after `publish`) attests the wheel, sdist and
   `.mcpb`, creates the GitHub Release as a draft with those files and the
   changelog section as notes, then publishes it as the latest release. It is
   the only job with repository write access.
-- `publish` (publish only) waits for `pypi` environment approval, then
-  publishes to PyPI.
+- `publish` (publish only, after `build` and `build-mcpb`) waits for `pypi`
+  environment approval, then publishes to PyPI. Nothing is published unless
+  both builds and the changelog check passed.
 - `publish-image` (publish only, after `publish`) builds the amd64 and arm64
   image, pushes it to `ghcr.io/thatskiff33/nz-openbank-mcp` tagged `X.Y.Z`,
   `X.Y` and `latest`, and attests its provenance. The first push creates the

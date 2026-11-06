@@ -122,7 +122,8 @@ jobs:
       - name: release notes from CHANGELOG
         run: |
           version="${GITHUB_REF_NAME#v}"
-          awk -v head="## ${version} " 'index($0, head) == 1 {on = 1; next} /^## / {on = 0} on'             CHANGELOG.md > notes.md
+          awk -v head="## ${version} " 'index($0, head) == 1 {on = 1; next} /^## / {on = 0} on' \
+            CHANGELOG.md > notes.md
           if ! grep -q '[^[:space:]]' notes.md; then
             echo "CHANGELOG.md has no '## ${version} - <date>' section"
             exit 1

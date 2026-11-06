@@ -267,6 +267,10 @@ jobs:
           npx -y @anthropic-ai/claude-code@2.1.316 plugin validate .
       - name: Desktop Extension manifest validator
         run: npx -y @anthropic-ai/mcpb@2.1.2 validate mcpb/manifest.json
+      - name: pack the Desktop Extension and check every file
+        run: |
+          npx -y @anthropic-ai/mcpb@2.1.2 pack mcpb "$RUNNER_TEMP/ci.mcpb"
+          python3 scripts/check_mcpb_bundle.py "$RUNNER_TEMP/ci.mcpb"
       - name: build sdist and wheel (hash-pinned build backend, as in release)
         run: uv build --build-constraints .github/build-constraints/requirements.txt --require-hashes
       - name: wheel smoke import

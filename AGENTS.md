@@ -241,7 +241,8 @@ proposes weekly grouped updates. The package build backend is pinned with hashes
 command in `requirements.txt`); CI and the release build use it.
 
 To release: bump `version` in `pyproject.toml` and `__version__` in
-`src/nz_openbank_mcp/__init__.py`, regenerate the manifests, merge, tag the
+`src/nz_openbank_mcp/__init__.py`, rename `## Unreleased` in `CHANGELOG.md` to
+`## X.Y.Z - <date>`, regenerate the manifests, merge, tag the
 merge commit `vX.Y.Z`, run `gh workflow run release.yml --ref vX.Y.Z` for the
 TestPyPI dry run, then run `gh workflow run release.yml --ref vX.Y.Z -f
 publish=true` and approve the `pypi` environment. The workflow creates and

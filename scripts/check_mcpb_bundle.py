@@ -49,10 +49,12 @@ def expected_files(source: Path) -> dict[str, bytes]:
 def differences(bundle: Path, source: Path) -> list[str]:
     want = expected_files(source)
     with zipfile.ZipFile(bundle) as archive:
-        got = {
-            info.filename: archive.read(info) for info in archive.infolist() if not info.is_dir()
-        }
-    problems = [f"unexpected file in bundle: {name}" for name in sorted(set(got) - set(want))]
+        entries = [info for info in archive.infolist() if not info.is_dir()]
+        got = {info.filename: archive.read(info) for info in entries}
+    # A repeated name would let one copy hide behind another.
+    names = [info.filename for info in entries]
+    problems = [f"duplicate entry in bundle: {n}" for n in sorted(set(names)) if names.count(n) > 1]
+    problems += [f"unexpected file in bundle: {name}" for name in sorted(set(got) - set(want))]
     problems += [f"missing from bundle: {name}" for name in sorted(set(want) - set(got))]
     for name in sorted(set(want) & set(got)):
         if name == "manifest.json":

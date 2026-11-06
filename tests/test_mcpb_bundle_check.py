@@ -107,3 +107,12 @@ def test_wrong_arguments_print_usage() -> None:
     )
     assert result.returncode == 2
     assert "Usage" in result.stderr
+
+
+def test_a_repeated_entry_fails(tmp_path: Path) -> None:
+    bundle = _pack(tmp_path / "x.mcpb")
+    with zipfile.ZipFile(bundle, "a") as archive:
+        archive.writestr("icon.png", b"second copy")
+    result = _run(bundle)
+    assert result.returncode == 1
+    assert "duplicate entry in bundle: icon.png" in result.stderr
