@@ -121,11 +121,16 @@ def check_inline_default_env(rel: str, env: dict[str, Any], keys: set[str]) -> N
         fail(f"{rel}: env {var} is not a declared setting")
 
 
-def check_registry() -> None:
+def check_registry(keys: set[str]) -> None:
     rel = "server.json"
     for package in load(rel).get("packages", []):
-        for raw in obj(package, rel).get("environmentVariables", []):
-            entry = obj(raw, rel)
+        entries = [obj(raw, rel) for raw in obj(package, rel).get("environmentVariables", [])]
+        names = {str(entry.get("name", "")).lower() for entry in entries}
+        for key in sorted(keys - names):
+            fail(f"{rel}: {key.upper()} is a declared setting but is missing")
+        for key in sorted(names - keys):
+            fail(f"{rel}: {key.upper()} is not a declared setting")
+        for entry in entries:
             key = str(entry.get("name", "")).lower()
             if key in SENSITIVE_KEYS:
                 if not entry.get("isSecret"):
@@ -141,21 +146,26 @@ def check_registry() -> None:
 
 def check_dockerfile() -> None:
     text = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    # Only the final stage reaches the image, and its last assignment wins.
+    final_stage = re.split(r"(?mi)^\s*FROM\s", text)[-1]
     for var, value in (("AKAHU_READ_ONLY", "true"), ("AKAHU_AUTOMATION_BYPASS", "false")):
-        if not re.search(rf"(?m)^\s*(?:ENV\s+)?{var}={value}\b", text):
-            fail(f"Dockerfile: ENV must set {var}={value}")
+        values = re.findall(rf"\b{var}=(\S+)", final_stage)
+        if not values or values[-1].rstrip("\\") != value:
+            fail(f"Dockerfile: ENV must set {var}={value} in the final stage")
 
 
-def check_example(version: str) -> None:
+def check_example(version: str, keys: set[str]) -> None:
     rel = "examples/claude_desktop_config.json"
     for name, server in servers(rel, load(rel)).items():
         check_launch(f"{rel}: {name}", server, version)
         env = obj(server.get("env", {}), f"{rel}: {name}.env")
+        for var in sorted(set(env) - {key.upper() for key in keys}):
+            fail(f"{rel}: env {var} is not a declared setting")
         for key, expected in PINNED_DEFAULTS.items():
-            if env.get(key.upper(), expected) != expected:
+            if env.get(key.upper()) != expected:
                 fail(f"{rel}: {key.upper()} must be {expected!r}, got {env.get(key.upper())!r}")
         for key in sorted(SENSITIVE_KEYS):
-            if "REPLACE" not in str(env.get(key.upper(), "REPLACE")):
+            if "REPLACE" not in str(env.get(key.upper(), "")):
                 fail(f"{rel}: {key.upper()} must be a placeholder")
 
 
@@ -272,9 +282,9 @@ def main(argv: list[str] | None = None) -> int:
             fail(f"{rel}: version {data.get('version')!r} != pyproject.toml {version!r}")
 
     check_other_hosts(version, set(user_config))
-    check_registry()
+    check_registry(set(user_config))
     check_dockerfile()
-    check_example(version)
+    check_example(version, set(user_config))
 
     init = (ROOT / "src" / "nz_openbank_mcp" / "__init__.py").read_text(encoding="utf-8")
     if f'__version__ = "{version}"' not in init:

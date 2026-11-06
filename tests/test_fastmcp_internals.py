@@ -32,14 +32,30 @@ def _provider() -> AllowlistedGoogleOAuthProvider:
     )
 
 
-def test_oauth_proxy_still_has_the_private_attributes_we_use() -> None:
-    provider = _provider()
+def _missing(provider: object) -> list[str]:
+    """The required attributes or methods `provider` lacks."""
+    missing = []
     for attribute, methods in REQUIRED.items():
-        assert hasattr(provider, attribute), (
-            f"FastMCP's OAuth proxy no longer has {attribute}; update "
-            "AllowlistedGoogleOAuthProvider._refuse_unless_allowed in http_auth.py"
-        )
-        for method in methods:
-            assert callable(getattr(getattr(provider, attribute), method, None)), (
-                f"{attribute}.{method} is missing; update http_auth.py"
-            )
+        if not hasattr(provider, attribute):
+            missing.append(attribute)
+            continue
+        missing += [
+            f"{attribute}.{method}"
+            for method in methods
+            if not callable(getattr(getattr(provider, attribute), method, None))
+        ]
+    return missing
+
+
+def test_oauth_proxy_still_has_the_private_attributes_we_use() -> None:
+    assert _missing(_provider()) == [], (
+        "FastMCP's OAuth proxy changed; update "
+        "AllowlistedGoogleOAuthProvider._refuse_unless_allowed in http_auth.py"
+    )
+
+
+def test_the_guard_fails_on_a_provider_without_them() -> None:
+    class Stub:
+        _code_store = object()
+
+    assert _missing(Stub()) == ["_code_store.get", "_code_store.delete", "_token_validator"]

@@ -88,6 +88,7 @@ def test_registry_tokens_must_be_secret_without_default(checkout: Path) -> None:
         lambda d: _registry_env(d, "AKAHU_USER_TOKEN").update(isSecret=False, default="x"),
     )
     result = _check(checkout)
+    assert result.returncode == 1
     assert "server.json: AKAHU_USER_TOKEN must be isSecret" in result.stderr
     assert "AKAHU_USER_TOKEN is secret and must not have a default" in result.stderr
 
@@ -114,7 +115,36 @@ def test_dockerfile_must_keep_safe_defaults(checkout: Path, old: str, new: str) 
     dockerfile.write_text(dockerfile.read_text(encoding="utf-8").replace(old, new), "utf-8")
     result = _check(checkout)
     assert result.returncode == 1
-    assert f"Dockerfile: ENV must set {old}" in result.stderr
+    assert f"Dockerfile: ENV must set {old} in the final stage" in result.stderr
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        "\nENV AKAHU_READ_ONLY=false\n",
+        "\nENV AKAHU_AUTOMATION_BYPASS=true\n",
+    ],
+)
+def test_dockerfile_later_override_is_caught(checkout: Path, extra: str) -> None:
+    dockerfile = checkout / "Dockerfile"
+    dockerfile.write_text(dockerfile.read_text(encoding="utf-8") + extra, "utf-8")
+    result = _check(checkout)
+    assert result.returncode == 1
+    assert "Dockerfile: ENV must set" in result.stderr
+
+
+def test_dockerfile_safe_env_only_in_build_stage_is_caught(checkout: Path) -> None:
+    dockerfile = checkout / "Dockerfile"
+    text = dockerfile.read_text(encoding="utf-8")
+    first_from = text.index("FROM ")
+    second_from = text.index("FROM ", first_from + 1)
+    final = text[second_from:]
+    final = final.replace("AKAHU_READ_ONLY=true", "AKAHU_X=1")
+    stage1 = text[:second_from] + "ENV AKAHU_READ_ONLY=true\n"
+    dockerfile.write_text(stage1 + final, "utf-8")
+    result = _check(checkout)
+    assert result.returncode == 1
+    assert "AKAHU_READ_ONLY=true in the final stage" in result.stderr
 
 
 def test_claude_marketplace_must_point_at_plugin(checkout: Path) -> None:
@@ -148,3 +178,32 @@ def test_example_must_keep_safe_values_and_placeholders(checkout: Path) -> None:
     result = _check(checkout)
     assert "AKAHU_READ_ONLY must be 'true'" in result.stderr
     assert "AKAHU_USER_TOKEN must be a placeholder" in result.stderr
+
+
+def test_registry_missing_and_undeclared_entries_fail(checkout: Path) -> None:
+    def change(d: Any) -> None:
+        env = d["packages"][0]["environmentVariables"]
+        env[:] = [e for e in env if e["name"] not in {"AKAHU_READ_ONLY", "AKAHU_USER_TOKEN"}]
+        env.append({"name": "AKAHU_BASE_URL", "format": "string"})
+
+    _edit_json(checkout / "server.json", change)
+    result = _check(checkout)
+    assert result.returncode == 1
+    assert "server.json: AKAHU_READ_ONLY is a declared setting but is missing" in result.stderr
+    assert "server.json: AKAHU_USER_TOKEN is a declared setting but is missing" in result.stderr
+    assert "server.json: AKAHU_BASE_URL is not a declared setting" in result.stderr
+
+
+def test_example_missing_and_undeclared_entries_fail(checkout: Path) -> None:
+    def change(d: Any) -> None:
+        env = d["mcpServers"]["nz-openbank"]["env"]
+        del env["AKAHU_READ_ONLY"]
+        del env["AKAHU_USER_TOKEN"]
+        env["AKAHU_BASE_URL"] = "https://example.com"
+
+    _edit_json(checkout / "examples/claude_desktop_config.json", change)
+    result = _check(checkout)
+    assert result.returncode == 1
+    assert "AKAHU_READ_ONLY must be 'true', got None" in result.stderr
+    assert "AKAHU_USER_TOKEN must be a placeholder" in result.stderr
+    assert "env AKAHU_BASE_URL is not a declared setting" in result.stderr
