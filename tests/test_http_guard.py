@@ -64,8 +64,8 @@ def test_allowed_hosts_default_empty(fake_env: None) -> None:
         "mcp.example.com:http",
         "mcp.example.com:70000",
         "mcp example.com",
-        "mcp.example.com:８０",  # full-width digits
-        "mcp.example.com:٨٠",  # Arabic-Indic digits
+        "mcp.example.com:\uff18\uff10",  # full-width digits
+        "mcp.example.com:\u0668\u0660",  # Arabic-Indic digits
     ],
 )
 def test_allowed_hosts_reject_non_hosts(bad: str) -> None:
