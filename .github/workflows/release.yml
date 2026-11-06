@@ -353,6 +353,34 @@ jobs:
           ref: ${{ github.sha }}
           persist-credentials: false
 
+      # The image installs the wheel the build job made and PyPI received;
+      # the Dockerfile runs no build backend.
+      - name: download package artefacts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: dist/
+
+      # Proves the wheel going into the image is byte-for-byte the one on PyPI.
+      - name: wheel matches the file on PyPI
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          wheel="dist/nz_openbank_mcp-${version}-py3-none-any.whl"
+          test -f "$wheel"
+          local_sha=$(sha256sum "$wheel" | cut -d' ' -f1)
+          pypi_sha=""
+          for attempt in $(seq 1 20); do
+            pypi_sha=$(curl -fsSL "https://pypi.org/pypi/nz-openbank-mcp/${version}/json" \
+              | jq -r --arg n "$(basename "$wheel")" '.urls[] | select(.filename == $n) | .digests.sha256' || true)
+            if [ -n "$pypi_sha" ]; then break; fi
+            echo "attempt $attempt: not on PyPI yet"
+            if [ "$attempt" -lt 20 ]; then sleep 15; fi
+          done
+          echo "dist: $local_sha"
+          echo "PyPI: $pypi_sha"
+          test -n "$pypi_sha" && test "$pypi_sha" = "$local_sha"
+
       # Both helpers pull images; pin them by digest (tags as of 2026-11-06).
       - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
         with:

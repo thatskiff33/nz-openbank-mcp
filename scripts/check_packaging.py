@@ -10,7 +10,8 @@ Grok: env values are placeholders only (no literal values), Codex forwards
 exactly the declared variables, Cursor and Grok carry the same safe inline
 defaults, and every marketplace index points at plugin/. server.json marks the
 tokens secret with no default and carries the pinned defaults; no sensitive key
-has a default anywhere; the Dockerfile keeps the safe AKAHU_* defaults; and
+has a default anywhere; the Dockerfile keeps the safe AKAHU_* defaults and its
+RUN commands use only allowlisted programs and uv commands; and
 examples/claude_desktop_config.json runs the pinned release with safe values.
 No root .mcp.json or portable plugin/plugin.json may exist. Exits non-zero on
 any failure. `--root DIR` checks another checkout (used by the tests).
@@ -21,6 +22,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import shlex
 import sys
 import tomllib
 from pathlib import Path
@@ -35,6 +37,18 @@ PINNED_DEFAULTS = {
     "akahu_mask_accounts": "false",
 }
 SENSITIVE_KEYS = {"akahu_user_token", "akahu_app_token"}
+# Dockerfile RUN commands are checked against an allowlist, so anything that
+# could build the package (a new tool, or a wrapper such as sudo or xargs) fails
+# until it is added here deliberately. uv and python have their own rules.
+RUN_PROGRAMS = {"set", "echo", "printf", "exit", "test", "[", "true", "false", "useradd"}
+SHELL_KEYWORDS = {"if", "then", "else", "elif", "fi", "!"}
+# uv commands the image build may run, with the flags each one must carry.
+UV_ALLOWED = {
+    ("sync",): {"--frozen", "--no-install-project", "--no-build"},
+    ("pip", "install"): {"--no-deps", "--no-build"},
+    ("pip", "check"): set(),
+    ("pip", "list"): set(),
+}
 
 errors: list[str] = []
 
@@ -152,6 +166,111 @@ def check_dockerfile() -> None:
         values = re.findall(rf"\b{var}=(\S+)", final_stage)
         if not values or values[-1].rstrip("\\") != value:
             fail(f"Dockerfile: ENV must set {var}={value} in the final stage")
+    # The image installs a wheel built with the hash-pinned backend, so RUN may
+    # only use allowlisted commands. CI's image job also fails if the build log
+    # shows any build.
+    if re.search(r"(?im)^\s*#\s*escape\s*=", text):
+        fail("Dockerfile: the escape directive is not supported by this check")
+    path_changed = False
+    for instruction in dockerfile_instructions(text):
+        keyword = instruction.split(maxsplit=1)[0].upper()
+        if keyword == "FROM":
+            path_changed = False
+        elif keyword == "SHELL":
+            fail("Dockerfile: SHELL changes what RUN executes and is not supported")
+        elif keyword == "ENV" and re.search(r"\bPATH=", instruction):
+            path_changed = True
+        match = re.match(r"(?i)(?:ONBUILD\s+)?RUN\b(.*)", instruction, re.DOTALL)
+        if match:
+            if path_changed:
+                fail("Dockerfile: RUN after ENV PATH in the same stage is not checked")
+            check_run(match.group(1))
+
+
+def dockerfile_instructions(text: str) -> list[str]:
+    """Instructions as Docker reads them: comment and blank lines inside a
+    continuation are dropped, and backslash continuations are joined."""
+    instructions: list[str] = []
+    current = ""
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        current += " " + line
+        if current.endswith("\\"):
+            current = current[:-1]
+        else:
+            instructions.append(current.strip())
+            current = ""
+    if current.strip():
+        instructions.append(current.strip())
+    return instructions
+
+
+def check_run(body: str) -> None:
+    body = re.sub(r"^\s*(--\S+\s+)*", "", body)  # RUN --mount=... and similar flags
+    # Exec form is a JSON list of strings; anything else is shell form, as in Docker.
+    try:
+        exec_form = json.loads(body) if body.startswith("[") else None
+    except json.JSONDecodeError:
+        exec_form = None
+    if isinstance(exec_form, list) and all(isinstance(w, str) for w in exec_form):
+        check_command(exec_form)
+        return
+    if "<<" in body:
+        fail(f"Dockerfile: RUN may not use << (heredocs are not checked): {body}")
+        return
+    # Drop redirections and their targets (>&2, 2>/dev/null) so their & and
+    # file names do not read as operators or programs.
+    body = re.sub(r"[0-9]*[<>]+(&[0-9]+|\s*[^\s;&|()]+)", " ", body)
+    lexer = shlex.shlex(body, posix=True, punctuation_chars=";&|()`")
+    lexer.whitespace_split = True
+    try:
+        tokens = list(lexer)
+    except ValueError:
+        fail(f"Dockerfile: RUN could not be parsed: {body}")
+        return
+    words: list[str] = []
+    for token in [*tokens, ";"]:
+        # A run of operator characters (;, &&, |, $( and so on) ends a command.
+        if token and all(ch in ";&|()`" for ch in token):
+            check_command(words)
+            words = []
+        elif "$(" in token or "`" in token:
+            # Inside double quotes shlex keeps a substitution as one word, but
+            # the shell still runs it.
+            fail(f"Dockerfile: RUN may not use $( or ` inside quotes: {token}")
+        else:
+            words.append(token)
+
+
+def check_command(words: list[str]) -> None:
+    while words and (words[0] in SHELL_KEYWORDS or re.fullmatch(r"\w+=.*", words[0], re.DOTALL)):
+        if words[0].startswith("PATH="):
+            fail(f"Dockerfile: RUN may not set PATH: {' '.join(words)}")
+        words = words[1:]
+    if not words:
+        return
+    shown = " ".join(words)
+    program, args = words[0], words[1:]
+    if program == "uv":
+        if args == ["--version"]:
+            return
+        if "--build" in args:
+            fail(f"Dockerfile: uv --build undoes --no-build: {shown}")
+            return
+        positional = tuple(a for a in args if not a.startswith("-"))
+        command = next((c for c in UV_ALLOWED if positional[: len(c)] == c), None)
+        if command is None:
+            fail(f"Dockerfile: uv {' '.join(positional[:2])} is not allowed in RUN: {shown}")
+        elif missing := sorted(UV_ALLOWED[command] - set(args)):
+            fail(f"Dockerfile: uv {' '.join(command)} needs {' '.join(missing)}: {shown}")
+    elif program in {"python", "python3"}:
+        # Only inline code; -m, scripts and setup.py could start a build.
+        if args[:1] != ["-c"]:
+            fail(f"Dockerfile: python may only run -c code in RUN: {shown}")
+    elif program not in RUN_PROGRAMS:
+        fail(f"Dockerfile: RUN uses {program}, which this check does not allow: {shown}")
 
 
 def check_example(version: str, keys: set[str]) -> None:

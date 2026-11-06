@@ -239,7 +239,9 @@ the jobs their paths touch; other triggers run everything. `ci-ok` is the
 single required check. Actions are pinned to commit SHAs, and Dependabot
 proposes weekly grouped updates. The package build backend is pinned with hashes in
 `.github/build-constraints/` (edit `requirements.in`, then recompile with the
-command in `requirements.txt`); CI and the release build use it.
+command in `requirements.txt`); CI and the release build use it. The
+`Dockerfile` installs a prebuilt wheel from `dist/` and never builds the
+package itself; its header gives the local build commands.
 
 To release: bump `version` in `pyproject.toml` and `__version__` in
 `src/nz_openbank_mcp/__init__.py`, rename `## Unreleased` in `CHANGELOG.md` to
