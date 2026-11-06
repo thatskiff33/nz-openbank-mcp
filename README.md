@@ -303,9 +303,12 @@ answers 403.
 Pending transactions have no id, can change before they settle, and are
 marked `"pending": true`.
 
-`txn_get_transactions` and `txn_search_transactions` read at most 20 pages
-of results from Akahu per call. When a range holds more, the result has
-`"truncated": true`; ask again with a narrower date range.
+`txn_get_transactions` and `txn_search_transactions` return at most `limit`
+items (100 and 50 by default, up to 500). When a result is full, it has
+`"limit_reached": true` and more may exist; ask again with a higher `limit`
+or a narrower date range before adding anything up. They also read at most
+20 pages of results from Akahu per call. When a range holds more, the result
+has `"truncated": true`; ask again with a narrower date range.
 
 Reads and account refreshes are tried up to three times on network errors
 and Akahu server errors. Support tickets and name checks are sent once,
@@ -319,7 +322,8 @@ stores UTC timestamps. A date-only filter such as `start_date=2026-10-18`
 covers that whole NZ day, at either end of a range; a full ISO 8601 timestamp
 is passed to Akahu unchanged, and Akahu reads one without an offset as UTC.
 Amounts are formatted in each account's currency, so a USD account shows
-`-USD 9.99`. When an account's currency is unknown, `currency` is `null` and
+`-USD 9.99`. When an account's currency is unknown (no balance, or Akahu
+reports none), `currency` is `null` and
 `amount` has no currency symbol (for example `-1,234.50`); `amount_raw` is
 the same amount as a plain number, rounded to cents. Other date formats are
 rejected.

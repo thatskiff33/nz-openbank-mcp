@@ -47,7 +47,8 @@ class Connection(_Base):
 
 
 class Balance(_Base):
-    currency: str = "NZD"
+    # None when Akahu sends no currency; never guessed as NZD.
+    currency: str | None = None
     current: Money
     available: Money | None = None
     limit: Money | None = None

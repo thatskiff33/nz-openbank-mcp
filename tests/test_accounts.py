@@ -74,6 +74,28 @@ async def test_list_accounts_handles_missing_balance(
     assert result["accounts"][0]["currency"] is None
 
 
+async def test_balance_without_currency_is_unknown_not_nzd(
+    fake_env: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """COR-02: a balance block with no currency must not be guessed as NZD."""
+    from nz_openbank_mcp import deps
+    from nz_openbank_mcp.tools.accounts import get_account_balance, list_accounts
+
+    item = load_fixture("accounts")["items"][0]
+    item = {**item, "balance": {"current": 10.0, "available": 8.0}}
+    account = Account.model_validate(item)
+    client = MagicMock()
+    client.list_accounts = AsyncMock(return_value=[account])
+    client.get_account = AsyncMock(return_value=account)
+    monkeypatch.setattr(deps, "get_client", lambda: client)
+
+    listed = (await list_accounts())["accounts"][0]
+    assert listed["currency"] is None
+    assert listed["balance"] == "10.00"
+    balance = await get_account_balance(account_id=account.id)
+    assert balance == {"id": account.id, "balance": "10.00", "available": "8.00", "currency": None}
+
+
 async def test_list_accounts_renders_non_nzd_with_iso_prefix(
     fake_env: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:

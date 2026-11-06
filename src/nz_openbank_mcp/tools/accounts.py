@@ -45,7 +45,8 @@ async def list_accounts() -> dict[str, Any]:
     (masked, e.g. "01-****-***4567-00"), connection (institution name, e.g.
     "ANZ"), balance (formatted with currency, e.g. "$2,543.21" or
     "USD 100.00") and currency (ISO 4217 code). balance and currency are None
-    if the account has no balance block.
+    if the account has no balance block; currency alone is None when Akahu
+    reports none, and balance then has no currency symbol.
     """
     accounts = await deps.get_client().list_accounts()
     return {"accounts": [_summarise_account(a) for a in accounts]}
@@ -99,7 +100,8 @@ async def get_account_balance(account_id: str) -> dict[str, Any]:
     Returns {"id", "balance", "available", "currency"} where balance and
     available are currency-formatted strings (e.g. "$2,543.21" or "USD 100.00")
     and currency is the ISO 4217 code. All three are None if the account has
-    no balance block; available alone is None if not reported.
+    no balance block; available alone is None if not reported; currency alone
+    is None when Akahu reports none, and the amounts then have no symbol.
 
     Args:
         account_id: Akahu account id.

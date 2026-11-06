@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import timedelta
 from typing import Annotated, Any, Literal
 
@@ -11,7 +12,7 @@ from pydantic import BeforeValidator, Field
 
 from nz_openbank_mcp import deps
 from nz_openbank_mcp.aio import pair
-from nz_openbank_mcp.client import AkahuClient
+from nz_openbank_mcp.client import AkahuClient, TransactionPages
 from nz_openbank_mcp.formatting import (
     akahu_bound,
     format_money,
@@ -62,6 +63,32 @@ async def _currencies(client: AkahuClient) -> dict[str, str]:
     return currency_map(await client.list_accounts())
 
 
+async def _scan(
+    client: AkahuClient,
+    pages: TransactionPages,
+    keep: Callable[[Transaction], bool],
+    limit: int,
+) -> dict[str, Any]:
+    """Collect up to `limit` kept transactions while the currency lookup runs alongside."""
+
+    async def collect() -> list[Transaction]:
+        found: list[Transaction] = []
+        async for txn in pages:
+            if keep(txn):
+                found.append(txn)
+                if len(found) >= limit:
+                    break
+        return found
+
+    collected, currencies = await pair(collect(), _currencies(client))
+    return {
+        "transactions": [_summarise(t, currencies) for t in collected],
+        "truncated": pages.truncated,
+        # Conservative: true whenever the result is full, as more may exist.
+        "limit_reached": len(collected) >= limit,
+    }
+
+
 def _summarise(txn: Transaction, currencies: dict[str, str]) -> dict[str, Any]:
     """Settled transaction in the LLM-facing shape, in its account's currency."""
     currency = currencies.get(txn.account)
@@ -107,14 +134,17 @@ async def get_transactions(
 ) -> dict[str, Any]:
     """List settled transactions with optional filters.
 
-    Returns {"transactions": [...], "truncated": bool} where each entry has
-    id, account_id, date (YYYY-MM-DD, NZ calendar day), description, amount
-    (formatted in the account's currency, e.g. "-$12.50" or "-USD 9.99"),
-    amount_raw (number rounded to cents; negative = debit), currency (ISO
-    code, or None when the account's currency is unknown, in which case amount
-    has no symbol, e.g. "-1,234.50"), type, merchant (str | None), category
-    (str | None). truncated is true when the scan stopped at the 20-page cap
-    before reaching the end of the range; narrow the dates and call again.
+    Returns {"transactions": [...], "truncated": bool, "limit_reached": bool}
+    where each entry has id, account_id, date (YYYY-MM-DD, NZ calendar day),
+    description, amount (formatted in the account's currency, e.g. "-$12.50"
+    or "-USD 9.99"), amount_raw (number rounded to cents; negative = debit),
+    currency (ISO code, or None when the account's currency is unknown, in
+    which case amount has no symbol, e.g. "-1,234.50"), type, merchant
+    (str | None), category (str | None). The list is complete only when both
+    flags are false. limit_reached is true when the result holds `limit`
+    items, so more may exist: raise limit (up to 500) or narrow the dates
+    before totalling. truncated is true when the scan stopped at the 20-page
+    cap before reaching the end of the range; narrow the dates and call again.
 
     Args:
         account_id: Scope to one account (sent to Akahu).
@@ -132,29 +162,22 @@ async def get_transactions(
     start = akahu_bound(start_date, end=False)
     end = akahu_bound(end_date, end=True)
     client = deps.get_client()
-    currencies = await _currencies(client)
     if account_id is not None:
-        iterator = client.iter_account_transactions(account_id, start=start, end=end)
+        pages = client.iter_account_transactions(account_id, start=start, end=end)
     else:
-        iterator = client.iter_transactions(start=start, end=end)
+        pages = client.iter_transactions(start=start, end=end)
 
     low = None if min_amount is None else to_decimal(min_amount)
     high = None if max_amount is None else to_decimal(max_amount)
-    collected: list[Transaction] = []
-    async for txn in iterator:
+
+    def keep(txn: Transaction) -> bool:
         if category and (txn.category is None or txn.category.name != category):
-            continue
+            return False
         if low is not None and txn.amount < low:
-            continue
-        if high is not None and txn.amount > high:
-            continue
-        collected.append(txn)
-        if len(collected) >= limit:
-            break
-    return {
-        "transactions": [_summarise(t, currencies) for t in collected],
-        "truncated": iterator.truncated,
-    }
+            return False
+        return high is None or txn.amount <= high
+
+    return await _scan(client, pages, keep, limit)
 
 
 @server.tool(title="Get Transaction", annotations=READ_ONLY_ANNOTATIONS)
@@ -217,7 +240,9 @@ async def search_transactions(
     found. Without start_date the window is the 90 NZ days ending on end_date,
     or ending today. Use for free-text lookups; prefer get_transactions when
     filtering by account or amount. Returns {"transactions": [...],
-    "truncated": bool} with the same shape and meaning as get_transactions.
+    "truncated": bool, "limit_reached": bool} with the same shape and meaning
+    as get_transactions: if limit_reached, more matches may exist, so raise
+    limit (up to 500) or narrow the dates.
 
     Args:
         query: Substring to match (case-insensitive).
@@ -234,22 +259,15 @@ async def search_transactions(
         first_day = last_day - timedelta(days=SEARCH_DEFAULT_DAYS - 1)
         start = akahu_bound(first_day.isoformat(), end=False)
     client = deps.get_client()
-    currencies = await _currencies(client)
     needle = query.lower()
-    matches: list[Transaction] = []
-    iterator = client.iter_transactions(start=start, end=end)
-    async for txn in iterator:
+
+    def keep(txn: Transaction) -> bool:
         haystack = txn.description.lower()
         if txn.merchant:
             haystack += " " + txn.merchant.name.lower()
-        if needle in haystack:
-            matches.append(txn)
-            if len(matches) >= limit:
-                break
-    return {
-        "transactions": [_summarise(t, currencies) for t in matches],
-        "truncated": iterator.truncated,
-    }
+        return needle in haystack
+
+    return await _scan(client, client.iter_transactions(start=start, end=end), keep, limit)
 
 
 async def _complete_issue(ctx: Any, kw: dict[str, Any]) -> None:
