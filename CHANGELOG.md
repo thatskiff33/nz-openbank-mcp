@@ -4,14 +4,19 @@ Notable changes per release. Full notes and downloads are on the
 [Releases page](https://github.com/thatskiff33/nz-openbank-mcp/releases).
 Versions follow [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 0.1.7 - 2026-11-06
 
-- **Breaking for HTTP bearer mode behind a proxy.** The HTTP entrypoint now checks the `Host` and `Origin` headers of every request before authentication. Loopback is always accepted, and OAuth mode also accepts the host of `NZ_OPENBANK_MCP_PUBLIC_BASE_URL`. In bearer mode behind a reverse proxy, set the new `NZ_OPENBANK_MCP_ALLOWED_HOSTS` to the public host name, or requests get HTTP 421.
-- `examples/claude_desktop_config.json` now pins the release (`uvx --from nz-openbank-mcp==X.Y.Z`) and is generated with the manifests.
+### Upgrading from 0.1.6
+
+- **Breaking: HTTP bearer mode behind a reverse proxy.** Before upgrading, set `NZ_OPENBANK_MCP_ALLOWED_HOSTS` to the public host name the proxy forwards, or every request gets HTTP 421. The HTTP entrypoint now checks the `Host` and `Origin` headers of every request before authentication. Loopback is always accepted, and OAuth mode also accepts the host of `NZ_OPENBANK_MCP_PUBLIC_BASE_URL`, so stdio, local HTTP and OAuth deployments need no change.
+- **Account numbers are now shown in full by default.** To keep the old masking (bank code, last four digits and suffix), set `AKAHU_MASK_ACCOUNTS=true`, a new setting in every host's install form. Transaction descriptions and merchant names were never masked.
 - The systemd templates keep the OpenAI tunnel values in a new `/etc/nz-openbank-mcp/nz-openbank-tunnel.env` (root:root 0600), loaded only by the tunnel unit, so the HTTP server no longer receives the OpenAI key. Before installing the new tunnel unit, move `CONTROL_PLANE_TUNNEL_ID`, `CONTROL_PLANE_API_KEY`, `LOG_LEVEL` and `LOG_FORMAT` out of `nz-openbank.env` into that file; the new unit fails to start until it exists. The tunnel unit also gains the HTTP unit's system-call filter and `ProcSubset=pid`, and the Caddy example now forwards only the routes the server serves, with a 1MB request body limit.
+
+### Other changes
+
+- `examples/claude_desktop_config.json` now pins the release (`uvx --from nz-openbank-mcp==X.Y.Z`) and is generated with the manifests.
 - Releases check the CHANGELOG section and build the `.mcpb` before anything is published to PyPI, build the package with a hash-pinned build backend, and verify every file in the `.mcpb` against `mcpb/`. The container image now installs that same wheel instead of building the package during the image build.
 - Tool annotations now set every hint explicitly. Reads and the two refreshes declare `openWorldHint: false`; `txn_report_transaction_issue` and `id_verify_name`, which reach a person at Akahu or your bank, declare `openWorldHint: true`. The startup banner and bypass log now name tools as hosts call them, for example `acct_refresh_account`. The support-ticket tool's description asks for `fields` and `other_transaction_id` as arguments instead of promising a prompt.
-- Account numbers are now shown in full by default. Set `AKAHU_MASK_ACCOUNTS=true` (a new setting in every host's install form) to mask them to the bank code, last four digits and suffix as before. Transaction descriptions and merchant names were never masked, and the docs now say so.
 - Display name is now "NZ Open Banking MCP (Akahu)" in every plugin, extension and registry manifest.
 - `txn_get_transactions` and `txn_search_transactions` return `limit_reached: true` when the result holds `limit` items and more may exist. Before, a range with more transactions than `limit` came back looking complete.
 - An account balance with no currency is reported as `currency: null` instead of being assumed to be NZD.

@@ -6,4 +6,4 @@ import os
 # project must not be able to configure the server through its working directory.
 os.environ.setdefault("FASTMCP_ENV_FILE", os.devnull)
 
-__version__ = "0.1.6"
+__version__ = "0.1.7"
