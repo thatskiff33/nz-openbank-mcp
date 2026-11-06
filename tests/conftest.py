@@ -15,6 +15,15 @@ import respx
 from nz_openbank_mcp.config import get_config
 
 FIXTURES = Path(__file__).parent / "fixtures"
+
+# The sdist ships the tests but not the repository's packaging files and
+# scripts, so the tests that check those are skipped in an unpacked sdist.
+if not (Path(__file__).resolve().parent.parent / "scripts").is_dir():
+    collect_ignore = [
+        "test_mcpb_bundle_check.py",
+        "test_packaging_faults.py",
+        "test_plugin_manifests.py",
+    ]
 # A rooted path with no drive is not absolute on Windows.
 STATE_DIR = str(Path("/var/lib/nz-openbank-mcp").absolute())
 

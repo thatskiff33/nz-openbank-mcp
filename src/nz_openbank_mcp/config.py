@@ -133,6 +133,17 @@ class AkahuConfig(_Settings):
     request_timeout: int = Field(default=10, ge=1, le=120)
     log_level: LogLevel = Field(default="INFO")
 
+    @field_validator("mask_accounts", mode="before")
+    @classmethod
+    def _unset_mask_is_default(cls, value: object) -> object:
+        # A host install from before this setting existed may pass an empty
+        # value or the unresolved placeholder; both mean the default.
+        if isinstance(value, str) and (
+            not value.strip() or re.fullmatch(r"\$\{[^}]*\}", value.strip())
+        ):
+            return False
+        return value
+
     @field_validator("log_level", mode="before")
     @classmethod
     def _normalise_log_level(cls, value: object) -> object:

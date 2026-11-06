@@ -373,3 +373,27 @@ def test_mask_accounts_defaults_off_and_reads_the_environment(
     assert AkahuConfig().mask_accounts is False
     monkeypatch.setenv("AKAHU_MASK_ACCOUNTS", "true")
     assert AkahuConfig().mask_accounts is True
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["", "  ", "${user_config.akahu_mask_accounts}", "${AKAHU_MASK_ACCOUNTS:-false}"],
+)
+def test_mask_accounts_empty_or_unresolved_means_the_default(
+    fake_env: None, monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    """An install from before the setting existed must still start."""
+    from nz_openbank_mcp.config import AkahuConfig
+
+    monkeypatch.setenv("AKAHU_MASK_ACCOUNTS", value)
+    assert AkahuConfig().mask_accounts is False
+
+
+def test_mask_accounts_rejects_other_values(
+    fake_env: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from nz_openbank_mcp.config import AkahuConfig
+
+    monkeypatch.setenv("AKAHU_MASK_ACCOUNTS", "sometimes")
+    with pytest.raises(ValidationError, match="mask_accounts"):
+        AkahuConfig()

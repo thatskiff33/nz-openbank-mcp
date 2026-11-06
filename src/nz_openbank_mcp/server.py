@@ -147,6 +147,10 @@ def log_startup_banner() -> None:
             host,
             AKAHU_API_HOST,
         )
+    if cfg.mask_accounts:
+        logger.info("Account numbers are masked (AKAHU_MASK_ACCOUNTS=true).")
+    else:
+        logger.info("Account numbers are shown in full. Set AKAHU_MASK_ACCOUNTS=true to mask them.")
     if cfg.read_only:
         logger.info(
             "nz-openbank-mcp starting in READ-ONLY mode. All write tools will refuse "
