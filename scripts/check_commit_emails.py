@@ -33,14 +33,14 @@ NOREPLY = re.compile(r"[^@\s]+@users\.noreply\.github\.com", re.IGNORECASE)
 ALLOWED = {"noreply@github.com"}
 # Any local part (stopping at spaces, brackets, quotes and punctuation that
 # cannot end one), at the personal domains and their subdomains.
-PERSONAL_DOMAIN = r"(?:[a-z0-9-]+\.)*(?:gmail\.com|googlemail\.com|unlimit\.co\.nz)"
+# Group 1 is the base domain; a subdomain is matched but never reported, since
+# its label could be anything.
+PERSONAL_DOMAIN = r"(?:[a-z0-9-]+\.)*(gmail\.com|googlemail\.com|unlimit\.co\.nz)"
 PERSONAL = re.compile(
     # Not followed by more of a domain name; a sentence-ending full stop is fine.
-    rf"[^\s<>@\"'`(),;:\[\]]+@({PERSONAL_DOMAIN})(?![\w-]|\.[\w-])",
+    rf"[^\s<>@\"'`(),;:\[\]]+@{PERSONAL_DOMAIN}(?![\w-]|\.[\w-])",
     re.IGNORECASE,
 )
-# Zero-width characters a pasted address may carry; NFKC folds full-width forms.
-INVISIBLE = re.compile("[\u200b-\u200d\u2060\ufeff]")
 # The only bot whose PR bodies are skipped: they quote upstream release notes.
 BODY_EXEMPT_AUTHORS = {"dependabot[bot]"}
 # The commits endpoints return at most 250 commits.
@@ -55,7 +55,9 @@ FIX = (
 
 
 def normalise(text: str) -> str:
-    return INVISIBLE.sub("", unicodedata.normalize("NFKC", text))
+    """Fold full-width forms (NFKC) and drop invisible format characters (Cf)."""
+    text = unicodedata.normalize("NFKC", text)
+    return "".join(ch for ch in text if unicodedata.category(ch) != "Cf")
 
 
 def find_personal(text: str) -> list[str]:
@@ -68,7 +70,7 @@ def domain(address: str) -> str:
     if "@" not in address:
         return "no domain"
     found = re.fullmatch(PERSONAL_DOMAIN, address.rsplit("@", 1)[-1].strip(), re.IGNORECASE)
-    return found[0].lower() if found else "another domain"
+    return found[1].lower() if found else "another domain"
 
 
 def is_noreply(address: str) -> bool:
@@ -104,19 +106,28 @@ def check_diff(diff: str) -> list[str]:
     """Personal addresses on lines the diff adds, by file and new line number."""
     problems: list[str] = []
     path, line_no = "?", 0
+    # File headers (---, +++) only come before a file's first hunk; inside a
+    # hunk, an added line "++ x" also starts with "+++ ".
+    in_header = True
     for line in diff.splitlines():
-        if line.startswith("+++ "):
-            path = line[6:] if line.startswith("+++ b/") else line[4:]
+        if line.startswith("diff --git "):
+            in_header = True
+        elif in_header and line.startswith("+++ "):
+            path = line[4:].strip('"')
+            path = path.removeprefix("b/")
         elif line.startswith("@@"):
+            in_header = False
             hunk = re.search(r"\+(\d+)", line)
             line_no = int(hunk[1]) if hunk else 0
+        elif in_header or line.startswith(("-", "\\")):
+            continue  # header lines, removed lines, "\ No newline at end of file"
         elif line.startswith("+"):
             problems.extend(
                 f"{path}:{line_no}: adds a personal address ({found})"
                 for found in find_personal(line)
             )
             line_no += 1
-        elif not line.startswith("-"):
+        else:
             line_no += 1
     return problems
 

@@ -115,7 +115,7 @@ def test_noreply_commits_pass(tmp_path: Path, commit: dict[str, Any]) -> None:
         ),
         (
             _commit(message="x\n\nReported-by: C <c" + "@mail.unlimit.co.nz>"),
-            "commit message contains a personal address (mail.unlimit.co.nz)",
+            "commit message contains a personal address (unlimit.co.nz)",
         ),
     ],
 )
@@ -265,3 +265,64 @@ def test_address_forms_are_caught(tmp_path: Path, text: str, found: str) -> None
 def test_split_or_lookalike_addresses_are_not_flagged(tmp_path: Path, text: str) -> None:
     result = _run(tmp_path, [_commit()], body=text)
     assert result.returncode == 0, result.stderr
+
+
+def test_subdomain_label_is_never_printed(tmp_path: Path) -> None:
+    result = _run(tmp_path, [_commit(author="x" + "@secretbox.unlimit.co.nz")])
+    assert result.returncode == 1
+    assert "(unlimit.co.nz)" in result.stderr
+    assert "secretbox" not in result.stderr
+
+
+def test_soft_hyphen_inside_an_address_is_caught(tmp_path: Path) -> None:
+    result = _run(tmp_path, [_commit()], body="fake@gm" + chr(0xAD) + "ail.com")
+    assert result.returncode == 1
+
+
+def test_added_line_starting_with_plus_plus_is_checked(tmp_path: Path) -> None:
+    diff = (
+        "diff --git a/notes.md b/notes.md\n"
+        "--- a/notes.md\n"
+        "+++ b/notes.md\n"
+        "@@ -1,0 +1,3 @@\n"
+        "+ok\n"
+        f"+++ {GMAIL}\n"
+        f"+then {WORK}\n"
+    )
+    result = _run(tmp_path, [_commit()], diff=diff)
+    assert result.returncode == 1
+    assert "notes.md:2: adds a personal address (gmail.com)" in result.stderr
+    assert "notes.md:3: adds a personal address (unlimit.co.nz)" in result.stderr
+
+
+def test_removed_line_starting_with_dashes_is_not_a_header(tmp_path: Path) -> None:
+    diff = (
+        "diff --git a/a.md b/a.md\n"
+        "--- a/a.md\n"
+        "+++ b/a.md\n"
+        "@@ -1 +1 @@\n"
+        "--- old rule\n"
+        f"+new {GMAIL}\n"
+    )
+    result = _run(tmp_path, [_commit()], diff=diff)
+    assert "a.md:1: adds a personal address (gmail.com)" in result.stderr
+
+
+def test_no_newline_marker_does_not_shift_line_numbers(tmp_path: Path) -> None:
+    diff = (
+        "diff --git a/c.txt b/c.txt\n"
+        "--- a/c.txt\n"
+        "+++ b/c.txt\n"
+        "@@ -3 +3 @@\n"
+        "-old\n"
+        "\\ No newline at end of file\n"
+        f"+new {GMAIL}\n"
+    )
+    result = _run(tmp_path, [_commit()], diff=diff)
+    assert "c.txt:3: adds a personal address (gmail.com)" in result.stderr
+
+
+def test_quoted_diff_path_is_unquoted(tmp_path: Path) -> None:
+    diff = f'diff --git "a/x y.md" "b/x y.md"\n+++ "b/x y.md"\n@@ -0,0 +1 @@\n+{GMAIL}\n'
+    result = _run(tmp_path, [_commit()], diff=diff)
+    assert "x y.md:1: adds a personal address (gmail.com)" in result.stderr

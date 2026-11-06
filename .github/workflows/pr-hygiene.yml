@@ -45,8 +45,9 @@ jobs:
           PR_BODY: ${{ github.event.pull_request.body }}
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
         run: |
-          # Run the base branch's checker, so a PR cannot weaken the check it is
-          # judged by; fall back to the PR's copy only where the base has none.
+          # Run the base branch's checker, so weakening it takes a visible change
+          # to this workflow; fall back to the PR's copy only where the base has
+          # none. Keep the script's arguments compatible between versions.
           if ! git show "$BASE_SHA:scripts/check_commit_emails.py" > "$RUNNER_TEMP/check.py" 2>/dev/null; then
             cp scripts/check_commit_emails.py "$RUNNER_TEMP/check.py"
           fi
