@@ -4,19 +4,59 @@
 # Public connector URL after this route is:
 # https://mcp.example.com/openbank-mcp/mcp
 #
-# handle_path strips /openbank-mcp before proxying, so the backend app still serves
-# FastMCP Streamable HTTP on its internal /mcp path.
+# Only the paths the server serves are forwarded. handle_path strips
+# /openbank-mcp before proxying, so the backend still serves FastMCP Streamable
+# HTTP on its internal /mcp path and the OAuth endpoints at its root. Any other
+# path under /openbank-mcp gets a 404 from Caddy and never reaches the backend.
+# Request bodies over 1MB are refused with HTTP 413.
+#
+# No rate limit is configured. Stock Caddy has no rate-limit directive; the
+# commented example below needs a Caddy built with the caddy-ratelimit plugin
+# (github.com/mholt/caddy-ratelimit). Its numbers are examples, not tuned values.
 
 mcp.example.com {
+    # OAuth discovery metadata, served at the host root for the /openbank-mcp
+    # resource and issuer.
     handle /.well-known/oauth-protected-resource/openbank-mcp/mcp {
+        request_body {
+            max_size 1MB
+        }
         reverse_proxy http://127.0.0.1:8091
     }
 
     handle /.well-known/oauth-authorization-server/openbank-mcp {
+        request_body {
+            max_size 1MB
+        }
         reverse_proxy http://127.0.0.1:8091
     }
 
     handle_path /openbank-mcp/* {
-        reverse_proxy http://127.0.0.1:8091
+        # MCP transport, the OAuth endpoints and the non-path-aware
+        # authorization server metadata, as backend paths after the strip.
+        @openbank_backend path /mcp /authorize /token /register /auth/callback /consent /.well-known/oauth-authorization-server
+
+        handle @openbank_backend {
+            request_body {
+                max_size 1MB
+            }
+
+            # rate_limit {
+            #     zone openbank_oauth {
+            #         match {
+            #             path /authorize /token /register /auth/callback /consent
+            #         }
+            #         key {remote_host}
+            #         events 30
+            #         window 1m
+            #     }
+            # }
+
+            reverse_proxy http://127.0.0.1:8091
+        }
+
+        handle {
+            respond 404
+        }
     }
 }

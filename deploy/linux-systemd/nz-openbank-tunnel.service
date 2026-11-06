@@ -10,6 +10,7 @@ User=nz-openbank-mcp
 Group=nz-openbank-mcp
 WorkingDirectory=/opt/nz-openbank-mcp
 EnvironmentFile=/etc/nz-openbank-mcp/nz-openbank.env
+EnvironmentFile=/etc/nz-openbank-mcp/nz-openbank-tunnel.env
 Environment=UV_CACHE_DIR=/var/lib/nz-openbank-mcp/uv-cache
 Environment=XDG_CACHE_HOME=/var/lib/nz-openbank-mcp/cache
 ExecStart=/usr/local/bin/tunnel-client run --profile nz-openbank --profile-dir /etc/tunnel-client/profiles --health.listen-addr 127.0.0.1:8080 --health.url-file /run/nz-openbank-mcp/tunnel-health.url
@@ -31,17 +32,23 @@ ProtectKernelLogs=true
 ProtectKernelModules=true
 ProtectKernelTunables=true
 ProtectProc=invisible
+ProcSubset=pid
 ProtectSystem=strict
 ReadWritePaths=/run/nz-openbank-mcp /var/lib/nz-openbank-mcp
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 RestrictNamespaces=true
 RestrictRealtime=true
 RestrictSUIDSGID=true
+RemoveIPC=true
 SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+SystemCallErrorNumber=EPERM
 CapabilityBoundingSet=
 AmbientCapabilities=
 LockPersonality=true
 MemoryDenyWriteExecute=true
+DevicePolicy=closed
 
 [Install]
 WantedBy=multi-user.target

@@ -34,7 +34,7 @@ The operator must provide these values out of band:
 - `AKAHU_USER_TOKEN`.
 
 An OpenAI Admin API key is only for tunnel management tasks such as creating or
-editing tunnels. Do not put an Admin API key in `/etc/nz-openbank-mcp/nz-openbank.env`,
+editing tunnels. Do not put an Admin API key in any env file under `/etc/nz-openbank-mcp`,
 a systemd unit, shell history, or any long-running daemon environment.
 
 ## Create Or Reuse The Tunnel
@@ -74,14 +74,17 @@ export AKAHU_READ_ONLY=true
 export AKAHU_AUTOMATION_BYPASS=false
 ```
 
-For the systemd deployment assets, put the same values in:
+For the systemd deployment assets, put the Akahu values in the first file and
+the two `CONTROL_PLANE_*` values in the second:
 
 ```text
 /etc/nz-openbank-mcp/nz-openbank.env
+/etc/nz-openbank-mcp/nz-openbank-tunnel.env
 ```
 
-Keep that file root-owned and readable only by the service group, as described
-in `deploy/linux-systemd/README.md`.
+Keep `nz-openbank.env` root-owned and readable only by the service group, and
+`nz-openbank-tunnel.env` root-only, as described in
+`deploy/linux-systemd/README.md`. Only the tunnel unit loads the second file.
 
 ## Initialize The Profile
 
@@ -115,11 +118,12 @@ Run doctor before creating or verifying the ChatGPT connector:
 tunnel-client doctor --profile nz-openbank --explain
 ```
 
-For the systemd env file, load the values into a temporary shell first:
+For the systemd env files, load the values into a temporary shell first:
 
 ```bash
 set -a
 . /etc/nz-openbank-mcp/nz-openbank.env
+. /etc/nz-openbank-mcp/nz-openbank-tunnel.env
 set +a
 tunnel-client doctor --profile nz-openbank --profile-dir /etc/tunnel-client/profiles --explain
 ```
