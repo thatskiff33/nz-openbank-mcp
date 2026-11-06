@@ -321,6 +321,8 @@ def test_oauth_config_requires_allowlist(
         ("https://mcp.example.com:0/openbank-mcp", "port must be 1 to 65535: 0"),
         ("https://mcp.example.com:99999/openbank-mcp", "port must be 1 to 65535: 99999"),
         ("https://user@mcp.example.com/openbank-mcp", "plain host or host:port"),
+        ("https://mcp.example.com:８０/openbank-mcp", "plain host or host:port"),
+        ("https://mcp.example.com:٨٠/openbank-mcp", "plain host or host:port"),
     ],
 )
 def test_oauth_config_rejects_bad_public_base_urls(

@@ -48,7 +48,8 @@ DEFAULT_ALLOWED_REDIRECT_URIS = (
 )
 _LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 # host or host:port; a bracketed IPv6 address is allowed. No scheme, path or wildcard.
-_HOST_ENTRY = re.compile(r"(?:\[[0-9a-f:.]+\]|[a-z0-9._-]+)(?::(\d{1,5}))?")
+# ASCII only: \d would also match full-width and other Unicode digits.
+_HOST_ENTRY = re.compile(r"(?:\[[0-9a-f:.]+\]|[a-z0-9._-]+)(?::([0-9]{1,5}))?", re.ASCII)
 _MAX_PORT = 65535
 
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
