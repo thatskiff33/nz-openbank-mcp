@@ -578,6 +578,9 @@ def test_http_main_constructs_and_runs(fake_env: None, monkeypatch: pytest.Monke
             "port": 8091,
             "path": "/mcp",
             "uvicorn_config": {"access_log": False},
+            "host_origin_protection": True,
+            "allowed_hosts": [],
+            "allowed_origins": [],
         },
     }
 
