@@ -35,9 +35,11 @@ def test_missing_credentials_refuses_client_init(
 
 
 def test_path_segment_rejects_empty_value(fake_env: None) -> None:
+    from fastmcp.exceptions import ToolError
+
     from nz_openbank_mcp.client import AkahuClient
 
-    with pytest.raises(ValueError, match="account_id"):
+    with pytest.raises(ToolError, match="account_id"):
         AkahuClient._path_segment("", name="account_id")
 
 
@@ -68,23 +70,13 @@ async def test_get_account(akahu_client: Any, respx_mock: respx.MockRouter) -> N
     assert acc.id == "acc_chq_001"
 
 
-async def test_path_segments_are_percent_encoded(
-    akahu_client: Any, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    data = load_fixture("accounts")
-    captured: dict[str, str] = {}
+def test_path_segment_refuses_path_like_ids(fake_env: None) -> None:
+    from fastmcp.exceptions import ToolError
 
-    async def fake_request(method: str, path: str, **_: Any) -> dict[str, Any]:
-        captured["method"] = method
-        captured["path"] = path
-        return {"success": True, "item": data["items"][0]}
+    from nz_openbank_mcp.client import AkahuClient
 
-    monkeypatch.setattr(akahu_client, "_request", fake_request)
-    await akahu_client.get_account("acc/../me?x=1#frag")
-    assert captured == {
-        "method": "GET",
-        "path": "/accounts/acc%2F..%2Fme%3Fx%3D1%23frag",
-    }
+    with pytest.raises(ToolError, match="account_id is not a valid Akahu id"):
+        AkahuClient._path_segment("acc/../me?x=1#frag", name="account_id")
 
 
 async def test_get_transactions(akahu_client: Any, respx_mock: respx.MockRouter) -> None:

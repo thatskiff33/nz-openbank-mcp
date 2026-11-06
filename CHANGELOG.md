@@ -10,6 +10,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - `txn_get_transactions` and `txn_search_transactions` return `limit_reached: true` when the result holds `limit` items and more may exist. Before, a range with more transactions than `limit` came back looking complete.
 - An account balance with no currency is reported as `currency: null` instead of being assumed to be NZD.
 - `txn_get_transactions` and `txn_search_transactions` look up account currencies while the first page loads, saving one round trip.
+- Akahu ids are validated before any request is sent or any confirmation is asked; a value that is not a plain Akahu id is refused.
 
 ## 0.1.6 - 2026-11-02
 
