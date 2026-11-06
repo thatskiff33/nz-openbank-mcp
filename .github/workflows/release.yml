@@ -370,12 +370,12 @@ jobs:
           test -f "$wheel"
           local_sha=$(sha256sum "$wheel" | cut -d' ' -f1)
           pypi_sha=""
-          for attempt in $(seq 1 20); do
+          for attempt in $(seq 1 40); do
             pypi_sha=$(curl -fsSL "https://pypi.org/pypi/nz-openbank-mcp/${version}/json" \
               | jq -r --arg n "$(basename "$wheel")" '.urls[] | select(.filename == $n) | .digests.sha256' || true)
             if [ -n "$pypi_sha" ]; then break; fi
             echo "attempt $attempt: not on PyPI yet"
-            if [ "$attempt" -lt 20 ]; then sleep 15; fi
+            if [ "$attempt" -lt 40 ]; then sleep 15; fi
           done
           echo "dist: $local_sha"
           echo "PyPI: $pypi_sha"

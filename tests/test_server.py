@@ -533,6 +533,20 @@ def test_startup_banner_when_readonly(fake_env: None, caplog: pytest.LogCaptureF
         log_startup_banner()
     blob = "\n".join(r.message for r in caplog.records)
     assert "read-only" in blob.lower()
+    assert "Account numbers are shown in full" in blob
+
+
+def test_startup_banner_says_when_accounts_are_masked(
+    fake_env: None, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    from nz_openbank_mcp.server import log_startup_banner
+
+    monkeypatch.setenv("AKAHU_MASK_ACCOUNTS", "true")
+    with caplog.at_level(logging.INFO, logger="nz_openbank_mcp.server"):
+        log_startup_banner()
+    blob = "\n".join(r.message for r in caplog.records)
+    assert "Account numbers are masked" in blob
+    assert "shown in full" not in blob
 
 
 def test_configure_logging_suppresses_sensitive_http_client_logs() -> None:

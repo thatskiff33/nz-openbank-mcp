@@ -48,7 +48,8 @@ DEFAULT_ALLOWED_REDIRECT_URIS = (
 )
 _LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 # host or host:port; a bracketed IPv6 address is allowed. No scheme, path or wildcard.
-_HOST_ENTRY = re.compile(r"(?:\[[0-9a-f:.]+\]|[a-z0-9._-]+)(?::(\d{1,5}))?")
+# ASCII only: \d would also match full-width and other Unicode digits.
+_HOST_ENTRY = re.compile(r"(?:\[[0-9a-f:.]+\]|[a-z0-9._-]+)(?::([0-9]{1,5}))?", re.ASCII)
 _MAX_PORT = 65535
 
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
@@ -132,6 +133,17 @@ class AkahuConfig(_Settings):
     )
     request_timeout: int = Field(default=10, ge=1, le=120)
     log_level: LogLevel = Field(default="INFO")
+
+    @field_validator("mask_accounts", mode="before")
+    @classmethod
+    def _unset_mask_is_default(cls, value: object) -> object:
+        # A host install from before this setting existed may pass an empty
+        # value or the unresolved placeholder; both mean the default.
+        if isinstance(value, str) and (
+            not value.strip() or re.fullmatch(r"\$\{[^}]*\}", value.strip())
+        ):
+            return False
+        return value
 
     @field_validator("log_level", mode="before")
     @classmethod
@@ -416,10 +428,15 @@ class McpOAuthConfig(_Settings):
             raise ValueError("oauth public base url must use https")
         if not parsed.netloc:
             raise ValueError("oauth public base url must include a host")
-        if not _HOST_ENTRY.fullmatch(parsed.netloc.lower()):
+        match = _HOST_ENTRY.fullmatch(parsed.netloc.lower())
+        if match is None:
             raise ValueError(
                 "oauth public base url must have a plain host or host:port, without "
                 "credentials or wildcards"
+            )
+        if match.group(1) and not 1 <= int(match.group(1)) <= _MAX_PORT:
+            raise ValueError(
+                f"oauth public base url port must be 1 to {_MAX_PORT}: {match.group(1)}"
             )
         if parsed.query:
             raise ValueError("oauth public base url must not include a query string")
