@@ -427,10 +427,15 @@ class McpOAuthConfig(_Settings):
             raise ValueError("oauth public base url must use https")
         if not parsed.netloc:
             raise ValueError("oauth public base url must include a host")
-        if not _HOST_ENTRY.fullmatch(parsed.netloc.lower()):
+        match = _HOST_ENTRY.fullmatch(parsed.netloc.lower())
+        if match is None:
             raise ValueError(
                 "oauth public base url must have a plain host or host:port, without "
                 "credentials or wildcards"
+            )
+        if match.group(1) and not 1 <= int(match.group(1)) <= _MAX_PORT:
+            raise ValueError(
+                f"oauth public base url port must be 1 to {_MAX_PORT}: {match.group(1)}"
             )
         if parsed.query:
             raise ValueError("oauth public base url must not include a query string")

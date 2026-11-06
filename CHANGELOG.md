@@ -4,7 +4,7 @@ Notable changes per release. Full notes and downloads are on the
 [Releases page](https://github.com/thatskiff33/nz-openbank-mcp/releases).
 Versions follow [Semantic Versioning](https://semver.org/).
 
-## 0.1.7 - 2026-11-06
+## 0.1.7 - 2026-11-07
 
 ### Upgrading from 0.1.6
 
@@ -16,7 +16,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Other changes
 
-- `NZ_OPENBANK_MCP_ALLOWED_HOSTS` entries and the host in `NZ_OPENBANK_MCP_PUBLIC_BASE_URL` must be a plain host name or address, optionally with a port (punycode for international names); anything else stops the server at startup. The HTTP startup log lists the accepted hosts and warns when only loopback is accepted.
+- `NZ_OPENBANK_MCP_ALLOWED_HOSTS` entries and the host in `NZ_OPENBANK_MCP_PUBLIC_BASE_URL` must be a plain `host` or `host:port`, with a port from 1 to 65535 (punycode for international names); anything else stops the server at startup. The HTTP startup log lists the accepted hosts and warns when only loopback is accepted.
 - `examples/claude_desktop_config.json` now pins the release (`uvx --from nz-openbank-mcp==X.Y.Z`) and is generated with the manifests.
 - Releases check the CHANGELOG section and build the `.mcpb` before anything is published to PyPI, build the package with a hash-pinned build backend, and verify every file in the `.mcpb` against `mcpb/`. The container image installs that same wheel, checked against PyPI, instead of building the package during the image build.
 - Tool annotations now set every hint explicitly. Reads and the two refreshes declare `openWorldHint: false`; `txn_report_transaction_issue` and `id_verify_name`, which reach a person at Akahu or your bank, declare `openWorldHint: true`. The startup banner and bypass log now name tools as hosts call them, for example `acct_refresh_account`. The support-ticket tool's description asks for `fields` and `other_transaction_id` as arguments instead of promising a prompt.

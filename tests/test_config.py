@@ -318,6 +318,9 @@ def test_oauth_config_requires_allowlist(
         ("https:///openbank-mcp", "host"),
         ("https://mcp.example.com/openbank-mcp?debug=true", "query"),
         ("https://mcp.example.com/openbank-mcp#frag", "fragment"),
+        ("https://mcp.example.com:0/openbank-mcp", "port must be 1 to 65535: 0"),
+        ("https://mcp.example.com:99999/openbank-mcp", "port must be 1 to 65535: 99999"),
+        ("https://user@mcp.example.com/openbank-mcp", "plain host or host:port"),
     ],
 )
 def test_oauth_config_rejects_bad_public_base_urls(
@@ -397,3 +400,17 @@ def test_mask_accounts_rejects_other_values(
     monkeypatch.setenv("AKAHU_MASK_ACCOUNTS", "sometimes")
     with pytest.raises(ValidationError, match="mask_accounts"):
         AkahuConfig()
+
+
+@pytest.mark.parametrize("port", ["1", "8443", "65535"])
+def test_oauth_config_accepts_public_base_url_ports_in_range(
+    monkeypatch: pytest.MonkeyPatch, clean_oauth_env: None, port: str
+) -> None:
+    from nz_openbank_mcp.config import McpOAuthConfig
+
+    monkeypatch.setenv("NZ_OPENBANK_MCP_GOOGLE_CLIENT_ID", "google-client")
+    monkeypatch.setenv("NZ_OPENBANK_MCP_GOOGLE_CLIENT_SECRET", "google-secret")
+    monkeypatch.setenv("NZ_OPENBANK_MCP_PUBLIC_BASE_URL", f"https://mcp.example.com:{port}/mcp")
+    monkeypatch.setenv("NZ_OPENBANK_MCP_ALLOWED_USERS", "owner@example.com")
+
+    assert McpOAuthConfig().public_base_url == f"https://mcp.example.com:{port}/mcp"
