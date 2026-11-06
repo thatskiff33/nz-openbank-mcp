@@ -56,9 +56,10 @@ ignores `uv.lock`.
 | `src/nz_openbank_mcp/formatting.py` | `format_money`, `mask_account`, `local_date`, `akahu_bound`, `nz_day`, `nz_today`, `parse_iso_date` |
 | `src/nz_openbank_mcp/aio.py` | `pair`: two requests at once; a failure cancels the other and is raised as itself |
 
-A sub-server's tools are exposed as `<namespace>_<function>`. New tools go in
-an existing `tools/` module with `@server.tool`; a new group is a new module
-plus one `mcp.mount(...)` in `server.py`.
+A sub-server's tools are exposed as `<namespace>_<function>`, where each
+`tools/` module defines its `NAMESPACE` and `server.py` mounts it under that.
+New tools go in an existing `tools/` module with `@server.tool`; a new group
+is a new module plus one `mcp.mount(...)` in `server.py`.
 
 ## Rules for tools
 
@@ -80,7 +81,12 @@ Args:
 Print what hosts will see with:
 `uv run python -c 'import asyncio; from nz_openbank_mcp.server import build_server; m=build_server(); [print(t.name, ":", t.description) for t in asyncio.run(m.list_tools())]'`
 
-**Writes go through `@require_write_consent(describe, automatable=..., prepare=...)`,**
+**Annotations come from `tool_metadata.py`** and set every hint:
+`READ_ONLY_ANNOTATIONS` for reads, `REFRESH_ANNOTATIONS` for the refreshes and
+`OPEN_WORLD_WRITE_ANNOTATIONS` for writes that reach a person or system beyond
+the user's own Akahu data.
+
+**Writes go through `@require_write_consent(describe, namespace=NAMESPACE, automatable=..., prepare=...)`,**
 which applies, in order:
 
 1. `AKAHU_READ_ONLY=true` (the default) raises `ReadOnlyError` before any
@@ -103,8 +109,8 @@ which applies, in order:
    logs at INFO. Config validation rejects the bypass while read-only is on.
 
 Default to `automatable=False`; only idempotent, rate-limited actions with no
-third-party effect qualify. `bypass_eligible_tools()` feeds the startup
-banner.
+third-party effect qualify. `bypass_eligible_tools()` returns their exposed
+names for the startup banner, and the bypass log uses the same names.
 
 **Data handling:**
 

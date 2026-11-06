@@ -85,9 +85,9 @@ def build_server(
         auth=auth,
         lifespan=_lifespan(oauth_state),
     )
-    mcp.mount(accounts.server, namespace="acct")
-    mcp.mount(transactions.server, namespace="txn")
-    mcp.mount(identity.server, namespace="id")
+    mcp.mount(accounts.server, namespace=accounts.NAMESPACE)
+    mcp.mount(transactions.server, namespace=transactions.NAMESPACE)
+    mcp.mount(identity.server, namespace=identity.NAMESPACE)
     return mcp
 
 

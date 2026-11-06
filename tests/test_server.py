@@ -68,45 +68,58 @@ async def test_root_server_sets_chatgpt_instructions(fake_env: None) -> None:
     assert mcp._mcp_server.instructions == SERVER_INSTRUCTIONS
 
 
-async def test_all_tools_have_apps_sdk_titles_and_annotations(fake_env: None) -> None:
-    """ChatGPT Apps SDK treats missing tool annotations as a validation error."""
-    from nz_openbank_mcp.server import build_server
+_READ = {
+    "readOnlyHint": True,
+    "destructiveHint": False,
+    "idempotentHint": True,
+    "openWorldHint": False,
+}
+_REFRESH = {
+    "readOnlyHint": False,
+    "destructiveHint": False,
+    "idempotentHint": True,
+    "openWorldHint": False,
+}
+_OUTSIDE_WRITE = {
+    "readOnlyHint": False,
+    "destructiveHint": False,
+    "idempotentHint": False,
+    "openWorldHint": True,
+}
+EXPECTED_ANNOTATIONS = {
+    "acct_list_accounts": _READ,
+    "acct_get_account": _READ,
+    "acct_get_account_balance": _READ,
+    "acct_get_pending_transactions": _READ,
+    "acct_refresh_all_accounts": _REFRESH,
+    "acct_refresh_account": _REFRESH,
+    "txn_get_transactions": _READ,
+    "txn_get_transaction": _READ,
+    "txn_get_transactions_by_ids": _READ,
+    "txn_get_pending_transactions": _READ,
+    "txn_search_transactions": _READ,
+    # Sends a ticket to a person at Akahu.
+    "txn_report_transaction_issue": _OUTSIDE_WRITE,
+    # Triggers an identity check at the user's bank.
+    "id_verify_name": _OUTSIDE_WRITE,
+    "id_get_me": _READ,
+}
 
-    expected_write_tools = {
-        "acct_refresh_all_accounts",
-        "acct_refresh_account",
-        "txn_report_transaction_issue",
-        "id_verify_name",
-    }
-    idempotent_write_tools = {
-        "acct_refresh_all_accounts",
-        "acct_refresh_account",
-    }
+
+async def test_all_tools_have_apps_sdk_titles_and_annotations(fake_env: None) -> None:
+    """Every hint is set explicitly; only tools reaching outside the user's data are open-world."""
+    from nz_openbank_mcp.server import build_server
 
     mcp = build_server()
     tools = await mcp.list_tools()
 
+    assert {t.name for t in tools} == set(EXPECTED_ANNOTATIONS)
     for tool in tools:
         assert tool.title, f"{tool.name} is missing a human-readable title"
         assert tool.annotations is not None, f"{tool.name} is missing annotations"
-
-        annotations = tool.annotations
-        wire = annotations.model_dump(by_alias=True, exclude_none=True)
-        if tool.name in expected_write_tools:
-            assert annotations.read_only_hint is False
-            assert annotations.open_world_hint is False
-            assert annotations.destructive_hint is False
-            if tool.name in idempotent_write_tools:
-                assert annotations.idempotent_hint is True
-                assert wire["idempotentHint"] is True
-            else:
-                assert annotations.idempotent_hint is None
-            assert wire["readOnlyHint"] is False
-        else:
-            assert annotations.read_only_hint is True
-            assert annotations.open_world_hint is None
-            assert annotations.destructive_hint is None
-            assert wire == {"readOnlyHint": True}
+        wire = tool.annotations.model_dump(by_alias=True, exclude_none=True)
+        wire.pop("title", None)
+        assert wire == EXPECTED_ANNOTATIONS[tool.name], tool.name
 
 
 async def test_http_server_exposes_all_14_tools_with_auth(fake_env: None) -> None:
@@ -499,8 +512,18 @@ def test_startup_banner_when_bypass_on(bypass_env: None, caplog: pytest.LogCaptu
         log_startup_banner()
     blob = "\n".join(r.message for r in caplog.records)
     assert "automation bypass enabled" in blob.lower()
-    assert "refresh_all_accounts" in blob
-    assert "refresh_account" in blob
+    listed = blob.split("confirmation prompt: ", 1)[1].split(". ", 1)[0]
+    assert listed == "acct_refresh_account, acct_refresh_all_accounts"
+
+
+async def test_bypass_eligible_tools_are_exposed_names(fake_env: None) -> None:
+    """The banner and bypass log use the names hosts call, not function names."""
+    from nz_openbank_mcp.safety import bypass_eligible_tools
+    from nz_openbank_mcp.server import build_server
+
+    exposed = {t.name for t in await build_server().list_tools()}
+    assert bypass_eligible_tools() == ["acct_refresh_account", "acct_refresh_all_accounts"]
+    assert set(bypass_eligible_tools()) <= exposed
 
 
 def test_startup_banner_when_readonly(fake_env: None, caplog: pytest.LogCaptureFixture) -> None:

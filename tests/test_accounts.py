@@ -275,6 +275,33 @@ async def test_refresh_account_bypassed_when_automation_on(
     ctx.elicit.assert_not_awaited()
 
 
+@pytest.mark.parametrize(
+    ("tool", "kwargs", "exposed"),
+    [
+        ("refresh_all_accounts", {}, "acct_refresh_all_accounts"),
+        ("refresh_account", {"account_id": "acc_chq_001"}, "acct_refresh_account"),
+    ],
+)
+async def test_bypass_log_names_the_exposed_tool(
+    bypass_env: None,
+    ctx_factory: Callable[..., MagicMock],
+    patched_client: MagicMock,
+    caplog: pytest.LogCaptureFixture,
+    tool: str,
+    kwargs: dict[str, str],
+    exposed: str,
+) -> None:
+    import logging
+
+    from nz_openbank_mcp.tools import accounts
+
+    with caplog.at_level(logging.INFO, logger="nz_openbank_mcp.safety"):
+        await getattr(accounts, tool)(ctx=ctx_factory(), **kwargs)
+    bypass = [r.getMessage() for r in caplog.records if "[BYPASS]" in r.getMessage()]
+    assert len(bypass) == 1
+    assert bypass[0].startswith(f"[BYPASS] {exposed}: ")
+
+
 # ---------- get_pending_transactions (per-account) ----------
 
 

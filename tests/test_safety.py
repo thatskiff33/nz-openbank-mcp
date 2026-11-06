@@ -3,11 +3,22 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+
+
+@pytest.fixture(autouse=True)
+def _restore_bypass_registry() -> Iterator[None]:
+    """Tools defined here must not leak into the real registry other tests read."""
+    from nz_openbank_mcp import safety
+
+    snapshot = set(safety._BYPASS_REGISTRY)
+    yield
+    safety._BYPASS_REGISTRY.clear()
+    safety._BYPASS_REGISTRY.update(snapshot)
 
 
 async def test_confirm_write_proceeds_on_accept(
@@ -71,7 +82,7 @@ async def test_require_write_consent_blocks_in_readonly(
     """fake_env defaults to read-only; the decorated tool must refuse."""
     from nz_openbank_mcp.safety import ReadOnlyError, require_write_consent
 
-    @require_write_consent("Do the thing")
+    @require_write_consent("Do the thing", namespace="test")
     async def my_tool(*, ctx: Any, value: int) -> int:
         return value * 2  # pragma: no cover  # why: should not run when read-only
 
@@ -89,7 +100,7 @@ async def test_require_write_consent_elicits_and_runs(
 ) -> None:
     from nz_openbank_mcp.safety import require_write_consent
 
-    @require_write_consent("Do the thing")
+    @require_write_consent("Do the thing", namespace="test")
     async def my_tool(*, ctx: Any, value: int) -> int:
         return value * 2
 
@@ -104,7 +115,7 @@ async def test_require_write_consent_aborts_on_decline(
 ) -> None:
     from nz_openbank_mcp.safety import ElicitationDeclinedError, require_write_consent
 
-    @require_write_consent("Do the thing")
+    @require_write_consent("Do the thing", namespace="test")
     async def my_tool(*, ctx: Any, value: int) -> int:
         return value * 2  # pragma: no cover  # why: decline short-circuits
 
@@ -118,7 +129,7 @@ async def test_require_write_consent_aborts_on_cancel(
 ) -> None:
     from nz_openbank_mcp.safety import ElicitationCancelledError, require_write_consent
 
-    @require_write_consent("Do the thing")
+    @require_write_consent("Do the thing", namespace="test")
     async def my_tool(*, ctx: Any, value: int) -> int:
         return value * 2  # pragma: no cover  # why: cancel short-circuits
 
@@ -134,7 +145,7 @@ async def test_automatable_skips_elicit_when_bypass_on(
 ) -> None:
     from nz_openbank_mcp.safety import require_write_consent
 
-    @require_write_consent("Refresh things", automatable=True)
+    @require_write_consent("Refresh things", automatable=True, namespace="test")
     async def my_tool(*, ctx: Any, value: int) -> int:
         return value * 2
 
@@ -143,7 +154,7 @@ async def test_automatable_skips_elicit_when_bypass_on(
         result = await my_tool(ctx=ctx, value=21)
     assert result == 42
     ctx.elicit.assert_not_awaited()
-    assert any("[BYPASS]" in r.message and "my_tool" in r.message for r in caplog.records)
+    assert any(r.message.startswith("[BYPASS] test_my_tool: ") for r in caplog.records)
 
 
 async def test_automatable_still_elicits_when_bypass_off(
@@ -151,7 +162,7 @@ async def test_automatable_still_elicits_when_bypass_off(
 ) -> None:
     from nz_openbank_mcp.safety import require_write_consent
 
-    @require_write_consent("Refresh things", automatable=True)
+    @require_write_consent("Refresh things", automatable=True, namespace="test")
     async def my_tool(*, ctx: Any, value: int) -> int:
         return value * 2
 
@@ -166,7 +177,7 @@ async def test_non_automatable_still_elicits_when_bypass_on(
 ) -> None:
     from nz_openbank_mcp.safety import require_write_consent
 
-    @require_write_consent("Sensitive write", automatable=False)
+    @require_write_consent("Sensitive write", automatable=False, namespace="test")
     async def my_tool(*, ctx: Any, value: int) -> int:
         return value * 2
 
@@ -177,26 +188,19 @@ async def test_non_automatable_still_elicits_when_bypass_on(
 
 
 def test_bypass_eligible_tools_registry(fake_env: None) -> None:
-    """Decorator records its name iff automatable=True; non-automatable absent."""
-    from nz_openbank_mcp import safety
+    """Decorator records its exposed name iff automatable=True."""
     from nz_openbank_mcp.safety import bypass_eligible_tools, require_write_consent
 
-    # Snapshot/restore to avoid polluting other tests that rely on real tool registrations.
-    snapshot = set(safety._BYPASS_REGISTRY)
-    try:
+    @require_write_consent("auto thing", automatable=True, namespace="test")
+    async def auto_thing(*, ctx: Any) -> None: ...  # pragma: no cover
 
-        @require_write_consent("auto thing", automatable=True)
-        async def auto_thing(*, ctx: Any) -> None: ...  # pragma: no cover
+    @require_write_consent("manual thing", automatable=False, namespace="test")
+    async def manual_thing(*, ctx: Any) -> None: ...  # pragma: no cover
 
-        @require_write_consent("manual thing", automatable=False)
-        async def manual_thing(*, ctx: Any) -> None: ...  # pragma: no cover
-
-        names = bypass_eligible_tools()
-        assert "auto_thing" in names
-        assert "manual_thing" not in names
-    finally:
-        safety._BYPASS_REGISTRY.clear()
-        safety._BYPASS_REGISTRY.update(snapshot)
+    names = bypass_eligible_tools()
+    assert "test_auto_thing" in names
+    assert "auto_thing" not in names
+    assert "test_manual_thing" not in names
 
 
 def test_shown_quotes_and_escapes_layout_characters() -> None:
@@ -259,7 +263,9 @@ async def test_require_write_consent_builds_prompt_from_kwargs(
 ) -> None:
     from nz_openbank_mcp.safety import describe_request, require_write_consent
 
-    @require_write_consent(lambda kw: describe_request("Refresh:", [("account", kw["account_id"])]))
+    @require_write_consent(
+        lambda kw: describe_request("Refresh:", [("account", kw["account_id"])]), namespace="test"
+    )
     async def my_tool(*, ctx: Any, account_id: str) -> str:
         return f"refreshed-{account_id}"
 
@@ -281,7 +287,9 @@ async def test_prepare_runs_before_consent_and_its_values_reach_the_tool(
         kw["note"] = "filled"
 
     @require_write_consent(
-        lambda kw: describe_request("Send:", [("note", kw["note"])]), prepare=prepare
+        lambda kw: describe_request("Send:", [("note", kw["note"])]),
+        namespace="test",
+        prepare=prepare,
     )
     async def my_tool(*, ctx: Any, note: str | None = None) -> str | None:
         order.append("tool")
@@ -301,7 +309,7 @@ async def test_prepare_does_not_run_when_read_only(
     async def prepare(_ctx: Any, _kw: dict[str, Any]) -> None:
         raise AssertionError("prepare must not run")
 
-    @require_write_consent("Send.", prepare=prepare)
+    @require_write_consent("Send.", prepare=prepare, namespace="test")
     async def my_tool(*, ctx: Any) -> None:
         return None
 
