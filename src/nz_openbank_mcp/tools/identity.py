@@ -16,10 +16,12 @@ from nz_openbank_mcp import deps
 from nz_openbank_mcp.client import check_akahu_id
 from nz_openbank_mcp.safety import describe_request, require_write_consent
 from nz_openbank_mcp.tool_metadata import (
-    NON_DESTRUCTIVE_WRITE_ANNOTATIONS,
+    OPEN_WORLD_WRITE_ANNOTATIONS,
     READ_ONLY_ANNOTATIONS,
 )
 
+# Mount namespace; exposed tool names are `id_<function>`.
+NAMESPACE = "id"
 server: FastMCP[Any] = FastMCP("identity")
 
 
@@ -67,9 +69,11 @@ def _describe_check(kw: dict[str, Any]) -> str:
 
 @server.tool(
     title="Verify Name",
-    annotations=NON_DESTRUCTIVE_WRITE_ANNOTATIONS,
+    annotations=OPEN_WORLD_WRITE_ANNOTATIONS,
 )
-@require_write_consent(_describe_check, automatable=False, prepare=_check_name_args)
+@require_write_consent(
+    _describe_check, namespace=NAMESPACE, automatable=False, prepare=_check_name_args
+)
 async def verify_name(
     *,
     ctx: Context,

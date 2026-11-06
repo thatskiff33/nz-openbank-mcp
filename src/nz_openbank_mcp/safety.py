@@ -21,7 +21,8 @@ be forged or replayed against a different call. The nonce is also tied to the
 exact prompt text, so a retry that would send anything other than what the
 user approved is asked again.
 
-`bypass_eligible_tools()` returns the names registered with automatable=True.
+`bypass_eligible_tools()` returns the exposed names (`<namespace>_<function>`)
+of tools registered with automatable=True.
 """
 
 from __future__ import annotations
@@ -249,6 +250,7 @@ async def elicit_value(ctx: Any, prompt: str, response_type: Any) -> Any:
 def require_write_consent(
     describe: Describe,
     *,
+    namespace: str,
     automatable: bool = False,
     prepare: Prepare | None = None,
 ) -> Callable[[Callable[P, Awaitable[R]]], Callable[P, Awaitable[R]]]:
@@ -256,6 +258,9 @@ def require_write_consent(
 
     describe is the consent text, or a function building it from the tool's
     keyword arguments (use describe_request so every sent value is shown).
+
+    namespace is the one the tool's sub-server is mounted under, so the
+    bypass registry and log use the name hosts call (`<namespace>_<function>`).
 
     prepare(ctx, kwargs), if given, runs after the read-only check and before
     the consent prompt. It validates arguments and fills in missing values in
@@ -267,8 +272,9 @@ def require_write_consent(
     """
 
     def decorator(fn: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
+        tool_name = f"{namespace}_{fn.__name__}"
         if automatable:
-            _BYPASS_REGISTRY.add(fn.__name__)
+            _BYPASS_REGISTRY.add(tool_name)
 
         @wraps(fn)
         async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
@@ -289,7 +295,7 @@ def require_write_consent(
             rendered = describe if isinstance(describe, str) else describe(call_kwargs)
 
             if automatable and cfg.automation_bypass:
-                logger.info("[BYPASS] %s: %s", fn.__name__, rendered)
+                logger.info("[BYPASS] %s: %s", tool_name, rendered)
             else:
                 if ctx is None:  # pragma: no cover
                     raise ToolError("Internal error: write tool missing ctx parameter.")
@@ -305,5 +311,5 @@ def require_write_consent(
 
 
 def bypass_eligible_tools() -> list[str]:
-    """Names of tools whose decorator declared automatable=True."""
+    """Exposed names of tools whose decorator declared automatable=True."""
     return sorted(_BYPASS_REGISTRY)

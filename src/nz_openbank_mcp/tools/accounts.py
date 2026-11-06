@@ -14,11 +14,13 @@ from nz_openbank_mcp.formatting import format_money, mask_account
 from nz_openbank_mcp.models import Account
 from nz_openbank_mcp.safety import describe_request, require_write_consent
 from nz_openbank_mcp.tool_metadata import (
-    IDEMPOTENT_WRITE_ANNOTATIONS,
     READ_ONLY_ANNOTATIONS,
+    REFRESH_ANNOTATIONS,
 )
 from nz_openbank_mcp.tools.transactions import summarise_pending
 
+# Mount namespace; exposed tool names are `acct_<function>`.
+NAMESPACE = "acct"
 server: FastMCP[Any] = FastMCP("accounts")
 
 
@@ -130,10 +132,11 @@ async def get_account_balance(account_id: str) -> dict[str, Any]:
 
 @server.tool(
     title="Refresh All Accounts",
-    annotations=IDEMPOTENT_WRITE_ANNOTATIONS,
+    annotations=REFRESH_ANNOTATIONS,
 )
 @require_write_consent(
     "Refresh data for all your connected accounts. This is rate-limited by your bank.",
+    namespace=NAMESPACE,
     automatable=True,
 )
 async def refresh_all_accounts(*, ctx: Context) -> dict[str, Any]:
@@ -154,13 +157,14 @@ async def _check_account_id(_ctx: Any, kw: dict[str, Any]) -> None:
 
 @server.tool(
     title="Refresh Account",
-    annotations=IDEMPOTENT_WRITE_ANNOTATIONS,
+    annotations=REFRESH_ANNOTATIONS,
 )
 @require_write_consent(
     lambda kw: describe_request(
         "Refresh data for one account. Rate-limited by your bank.",
         [("account", kw.get("account_id"))],
     ),
+    namespace=NAMESPACE,
     automatable=True,
     prepare=_check_account_id,
 )

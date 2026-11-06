@@ -842,6 +842,22 @@ async def test_tool_descriptions_explain_limit_reached(fake_env: None) -> None:
         assert "limit_reached" in (tools[name].description or "")
 
 
+async def test_report_issue_schema_asks_for_values_as_arguments(fake_env: None) -> None:
+    """2026-07-28 clients cannot be asked mid-call, so the schema must not promise it."""
+    from nz_openbank_mcp.server import build_server
+
+    async with Client(build_server()) as c:
+        tools = {t.name: t for t in await c.list_tools()}
+    tool = tools["txn_report_transaction_issue"]
+    props = tool.input_schema["properties"]
+    for arg, pronoun in (("fields", "them"), ("other_transaction_id", "it")):
+        text = " ".join(props[arg]["description"].split())
+        assert f"pass {pronoun} here." in text, arg
+        assert f"Older clients may ask the user for {pronoun} if omitted." in text, arg
+    blob = (tool.description or "") + str(props)
+    assert "via elicitation" not in blob
+
+
 # ---------- currency lookup runs alongside the scan (PERF-01) ----------
 
 

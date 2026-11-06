@@ -30,10 +30,12 @@ from nz_openbank_mcp.safety import (
     require_write_consent,
 )
 from nz_openbank_mcp.tool_metadata import (
-    NON_DESTRUCTIVE_WRITE_ANNOTATIONS,
+    OPEN_WORLD_WRITE_ANNOTATIONS,
     READ_ONLY_ANNOTATIONS,
 )
 
+# Mount namespace; exposed tool names are `txn_<function>`.
+NAMESPACE = "txn"
 server: FastMCP[Any] = FastMCP("transactions")
 
 IssueType = Literal["DUPLICATE", "ENRICHMENT_ERROR", "ENRICHMENT_SUGGESTION"]
@@ -305,9 +307,11 @@ def _describe_issue(kw: dict[str, Any]) -> str:
 
 @server.tool(
     title="Report Transaction Issue",
-    annotations=NON_DESTRUCTIVE_WRITE_ANNOTATIONS,
+    annotations=OPEN_WORLD_WRITE_ANNOTATIONS,
 )
-@require_write_consent(_describe_issue, automatable=False, prepare=_complete_issue)
+@require_write_consent(
+    _describe_issue, namespace=NAMESPACE, automatable=False, prepare=_complete_issue
+)
 async def report_transaction_issue(
     *,
     ctx: Context,
@@ -321,8 +325,9 @@ async def report_transaction_issue(
 
     Sends a ticket to a human at Akahu support. Always elicits user
     confirmation (not bypass-eligible); the prompt shows every value in the
-    ticket, including the comment. Missing required values are collected
-    before that prompt. issue_type validation:
+    ticket, including the comment. Pass every required value as an argument;
+    older clients may ask the user for a missing one before that prompt.
+    issue_type validation:
       - "DUPLICATE": requires other_transaction_id (the paired duplicate).
       - "ENRICHMENT_ERROR": requires fields=[...] listing affected field names.
       - "ENRICHMENT_SUGGESTION": requires fields=[...] listing suggested fields.
@@ -332,12 +337,12 @@ async def report_transaction_issue(
     Args:
         transaction_id: Akahu transaction id the ticket is about.
         issue_type: One of "DUPLICATE", "ENRICHMENT_ERROR", "ENRICHMENT_SUGGESTION".
-        fields: Affected field names; required for ENRICHMENT_* issue types.
-            Omitted -> the user is prompted to supply them via elicitation.
+        fields: Affected field names. Required for ENRICHMENT_* issue types;
+            pass them here. Older clients may ask the user for them if omitted.
         comment: Optional free-text context for the support agent, up to
             1,000 characters.
-        other_transaction_id: Paired transaction id; required for DUPLICATE.
-            Omitted -> the user is prompted to supply it via elicitation.
+        other_transaction_id: Paired transaction id. Required for DUPLICATE;
+            pass it here. Older clients may ask the user for it if omitted.
     """
     result = await deps.get_client().report_transaction_issue(
         transaction_id,
