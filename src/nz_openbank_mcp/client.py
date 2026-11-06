@@ -12,6 +12,10 @@ process it), honouring a numeric Retry-After. Other 4xx surfaces immediately.
 
 Paging: transaction iterators stop after MAX_PAGES pages and set `truncated`.
 
+Errors: an error status becomes AkahuHTTPError, whose message says what to do
+and never includes the response body. A response that does not match its
+model becomes a ToolError naming the fields and error types, never the values.
+
 Logging: INFO logs "GET /path -> 200" lines. Auth tokens and API response
 bodies are never logged.
 """
@@ -28,6 +32,7 @@ from urllib.parse import quote
 
 import httpx
 from fastmcp.exceptions import ToolError
+from pydantic import BaseModel, ValidationError
 
 from nz_openbank_mcp.config import AkahuConfig, get_config
 from nz_openbank_mcp.models import (
@@ -49,8 +54,61 @@ _MAX_RETRY_AFTER = 60.0
 MAX_PAGES = 20
 # Letters, digits, underscore and hyphen only (ASCII), as in acc_... and trans_... ids.
 _AKAHU_ID = re.compile(r"[A-Za-z0-9_-]{1,128}", re.ASCII)
+_MAX_REPORTED_FIELDS = 3
 
 PageFetcher = Callable[[str | None], Awaitable[tuple[list[Transaction], str | None]]]
+
+
+class AkahuHTTPError(ToolError):
+    """Akahu answered with an error status. The message never includes the response body."""
+
+    def __init__(self, message: str, *, status_code: int) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
+
+def _status_error(status: int, method: str, path: str) -> AkahuHTTPError:
+    """An error that says what to do next, built from the status and path only."""
+    where = f"{method} {path}"
+    if status == httpx.codes.UNAUTHORIZED:
+        text = (
+            f"Akahu rejected the tokens (HTTP 401 for {where}). Check AKAHU_USER_TOKEN and "
+            "AKAHU_APP_TOKEN; they may have been revoked."
+        )
+    elif status == httpx.codes.FORBIDDEN and path.startswith("/verify/name"):
+        text = (
+            "Akahu refused the name check (HTTP 403). Enable the name verification scope for "
+            "your Personal App at https://my.akahu.nz/developers, then try again."
+        )
+    elif status == httpx.codes.FORBIDDEN:
+        text = f"Akahu refused {where} (HTTP 403): it is not available to your Personal App token."
+    elif status == httpx.codes.TOO_MANY_REQUESTS:
+        text = (
+            f"Akahu's rate limit was reached for {where} (HTTP 429); wait a minute and try again."
+        )
+    elif status >= httpx.codes.INTERNAL_SERVER_ERROR:
+        text = f"Akahu had a server error for {where} (HTTP {status}); try again later."
+    else:
+        text = f"Akahu returned HTTP {status} for {where}."
+    return AkahuHTTPError(text, status_code=status)
+
+
+def _validated[M: BaseModel](model: type[M], data: object, path: str) -> M:
+    """`data` as `model`. A mismatch names the fields and error types, never the values."""
+    try:
+        return model.model_validate(data)
+    except ValidationError as exc:
+        problems = [
+            f"{'.'.join(str(part) for part in err['loc'])} {err['type']}"
+            for err in exc.errors(include_input=False, include_url=False, include_context=False)
+        ]
+        shown = "; ".join(problems[:_MAX_REPORTED_FIELDS])
+        extra = len(problems) - _MAX_REPORTED_FIELDS
+        more = f" (and {extra} more)" if extra > 0 else ""
+        # `from None` keeps the ValidationError, which holds the input, out of tracebacks.
+        raise ToolError(
+            f"Akahu returned an unexpected {model.__name__} for {path}: {shown}{more}."
+        ) from None
 
 
 class TransactionPages:
@@ -197,7 +255,7 @@ class AkahuClient:
                 await asyncio.sleep(_BASE_BACKOFF * (2**attempt))
                 continue
 
-            response.raise_for_status()
+            raise _status_error(response.status_code, method, path)
 
         raise RuntimeError("Akahu request retry loop exhausted unexpectedly.")  # pragma: no cover
 
@@ -238,16 +296,16 @@ class AkahuClient:
 
     async def get_me(self) -> Me:
         data = await self._request("GET", "/me")
-        return Me.model_validate(_item(data, "/me"))
+        return _validated(Me, _item(data, "/me"), "/me")
 
     async def list_accounts(self) -> list[Account]:
         data = await self._request("GET", "/accounts")
-        return [Account.model_validate(item) for item in _items(data, "/accounts")]
+        return [_validated(Account, item, "/accounts") for item in _items(data, "/accounts")]
 
     async def get_account(self, account_id: str) -> Account:
         path = f"/accounts/{self._path_segment(account_id, name='account_id')}"
         data = await self._request("GET", path)
-        return Account.model_validate(_item(data, path))
+        return _validated(Account, _item(data, path), path)
 
     async def _transaction_page(
         self,
@@ -266,7 +324,7 @@ class AkahuClient:
         if cursor:
             params["cursor"] = cursor
         data = await self._request("GET", path, params=params or None)
-        items = [Transaction.model_validate(item) for item in _items(data, path)]
+        items = [_validated(Transaction, item, path) for item in _items(data, path)]
         cursor_block = data.get("cursor")
         next_cursor = cursor_block.get("next") if isinstance(cursor_block, dict) else None
         return items, next_cursor or None
@@ -286,7 +344,7 @@ class AkahuClient:
     async def get_transaction(self, transaction_id: str) -> Transaction:
         path = f"/transactions/{self._path_segment(transaction_id, name='transaction_id')}"
         data = await self._request("GET", path)
-        return Transaction.model_validate(_item(data, path))
+        return _validated(Transaction, _item(data, path), path)
 
     def iter_transactions(
         self,
@@ -305,13 +363,13 @@ class AkahuClient:
         """All pending transactions across the user's connected accounts."""
         path = "/transactions/pending"
         data = await self._request("GET", path)
-        return [PendingTransaction.model_validate(item) for item in _items(data, path)]
+        return [_validated(PendingTransaction, item, path) for item in _items(data, path)]
 
     async def get_account_pending_transactions(self, account_id: str) -> list[PendingTransaction]:
         """Pending transactions for one specific account."""
         path = f"/accounts/{self._path_segment(account_id, name='account_id')}/transactions/pending"
         data = await self._request("GET", path)
-        return [PendingTransaction.model_validate(item) for item in _items(data, path)]
+        return [_validated(PendingTransaction, item, path) for item in _items(data, path)]
 
     async def get_account_transactions(
         self,
@@ -353,7 +411,7 @@ class AkahuClient:
         for value in ids:
             check_akahu_id(value, name="ids")
         data = await self._request("POST", path, json=ids, idempotent=True)
-        return [Transaction.model_validate(item) for item in _items(data, path)]
+        return [_validated(Transaction, item, path) for item in _items(data, path)]
 
     # ---------- write endpoints ----------
 
@@ -361,12 +419,13 @@ class AkahuClient:
 
     async def refresh_all(self) -> RefreshResult:
         data = await self._request("POST", "/refresh", idempotent=True)
-        return RefreshResult.model_validate(data)
+        return _validated(RefreshResult, data, "/refresh")
 
     async def refresh_one(self, account_id: str) -> RefreshResult:
         account = self._path_segment(account_id, name="account_id")
-        data = await self._request("POST", f"/refresh/{account}", idempotent=True)
-        return RefreshResult.model_validate(data)
+        path = f"/refresh/{account}"
+        data = await self._request("POST", path, idempotent=True)
+        return _validated(RefreshResult, data, path)
 
     async def report_transaction_issue(
         self,
@@ -391,8 +450,9 @@ class AkahuClient:
         if other_transaction_id:
             body["other_id"] = other_transaction_id
         transaction = self._path_segment(transaction_id, name="transaction_id")
-        data = await self._request("POST", f"/support/{transaction}", json=body)
-        return SupportRequest.model_validate(data)
+        path = f"/support/{transaction}"
+        data = await self._request("POST", path, json=body)
+        return _validated(SupportRequest, data, path)
 
     async def verify_name(
         self,
@@ -425,4 +485,4 @@ class AkahuClient:
             account = self._path_segment(account_id, name="account_id")
             path = f"/verify/name/{account}"
         data = await self._request("POST", path, json=body)
-        return VerifyNameResult.model_validate(data)
+        return _validated(VerifyNameResult, data, path)

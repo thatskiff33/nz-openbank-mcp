@@ -11,6 +11,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - An account balance with no currency is reported as `currency: null` instead of being assumed to be NZD.
 - `txn_get_transactions` and `txn_search_transactions` look up account currencies while the first page loads, saving one round trip.
 - Akahu ids are validated before any request is sent or any confirmation is asked; a value that is not a plain Akahu id is refused.
+- Akahu error responses now say what to do: a 401 points at the two tokens, a 403 on a name check points at the Personal App scope, and rate-limit and server errors say to wait. Response bodies are never included.
+- A malformed Akahu response is reported by field name and error type only. Response values, such as balances, no longer appear in tool errors or logs.
 
 ## 0.1.6 - 2026-11-02
 
