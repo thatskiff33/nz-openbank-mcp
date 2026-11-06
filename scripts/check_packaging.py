@@ -23,8 +23,8 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
 USER_CONFIG_REF = re.compile(r"^\$\{user_config\.([a-z0-9_]+)\}$")
-# Defaults every host must ship. Masking is off by owner decision (epic #53).
-SAFE_DEFAULTS = {
+# Defaults every host must ship.
+PINNED_DEFAULTS = {
     "akahu_read_only": "true",
     "akahu_automation_bypass": "false",
     "akahu_mask_accounts": "false",
@@ -90,7 +90,7 @@ def check_user_config(rel: str, config: dict[str, Any]) -> None:
     for key in sorted(SENSITIVE_KEYS):
         if not obj(config.get(key, {}), f"{rel}: {key}").get("sensitive"):
             fail(f"{rel}: {key} must be declared sensitive")
-    for key, expected in SAFE_DEFAULTS.items():
+    for key, expected in PINNED_DEFAULTS.items():
         actual = obj(config.get(key, {}), f"{rel}: {key}").get("default")
         if actual != expected:
             fail(f"{rel}: {key} default must be {expected!r}, got {actual!r}")
@@ -104,7 +104,7 @@ def servers(rel: str, data: dict[str, Any]) -> dict[str, dict[str, Any]]:
 
 
 def check_inline_default_env(rel: str, env: dict[str, Any], keys: set[str]) -> None:
-    expected = {key.upper(): SAFE_DEFAULTS.get(key, "") for key in keys}
+    expected = {key.upper(): PINNED_DEFAULTS.get(key, "") for key in keys}
     for var, default in expected.items():
         want = f"${{{var}:-{default}}}"
         if env.get(var) != want:

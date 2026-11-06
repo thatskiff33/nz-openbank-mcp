@@ -34,7 +34,7 @@ def patched_client(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
 # ---------- list_accounts ----------
 
 
-async def test_list_accounts_returns_masked(fake_env: None, patched_client: MagicMock) -> None:
+async def test_list_accounts_returns_summary(fake_env: None, patched_client: MagicMock) -> None:
     from nz_openbank_mcp.tools.accounts import list_accounts
 
     result = await list_accounts()
@@ -116,7 +116,7 @@ async def test_list_accounts_renders_non_nzd_with_iso_prefix(
 # ---------- get_account ----------
 
 
-async def test_get_account_returns_masked(fake_env: None, patched_client: MagicMock) -> None:
+async def test_get_account_returns_summary(fake_env: None, patched_client: MagicMock) -> None:
     from nz_openbank_mcp.tools.accounts import get_account
 
     result = await get_account(account_id="acc_chq_001")
