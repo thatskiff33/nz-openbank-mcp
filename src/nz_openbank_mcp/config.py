@@ -13,6 +13,7 @@ the process environment (an env file cannot set it).
 from __future__ import annotations
 
 import os
+import re
 from functools import cache
 from pathlib import Path
 from typing import Literal, Self
@@ -45,6 +46,9 @@ DEFAULT_ALLOWED_REDIRECT_URIS = (
     "http://127.0.0.1:*",
 )
 _LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+# host or host:port; a bracketed IPv6 address is allowed. No scheme, path or wildcard.
+_HOST_ENTRY = re.compile(r"(?:\[[0-9a-f:.]+\]|[a-z0-9.-]+)(?::(\d{1,5}))?")
+_MAX_PORT = 65535
 # Windows reports every file as group/other writable, so the mode check is POSIX only.
 _POSIX = os.name == "posix"
 
@@ -242,6 +246,14 @@ class McpHttpConfig(_Settings):
             "OPENBANK_MCP_HTTP_PATH",
         ),
     )
+    allowed_hosts: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "NZ_OPENBANK_MCP_ALLOWED_HOSTS",
+            "OPENBANK_MCP_ALLOWED_HOSTS",
+        ),
+        description="Comma-separated host[:port] values accepted as Host besides loopback",
+    )
 
     @field_validator("auth_mode", mode="before")
     @classmethod
@@ -266,6 +278,24 @@ class McpHttpConfig(_Settings):
         if not value.startswith("/"):
             raise ValueError("http path must start with /")
         return value
+
+    @field_validator("allowed_hosts")
+    @classmethod
+    def _validate_allowed_hosts(cls, value: str) -> str:
+        """Accept only plain host or host:port entries."""
+        for entry in _split_csv_lower(value):
+            match = _HOST_ENTRY.fullmatch(entry)
+            if match is None or (match.group(1) and not 1 <= int(match.group(1)) <= _MAX_PORT):
+                raise ValueError(
+                    "allowed host must be host or host:port, without scheme, path or "
+                    f"wildcard: {entry}"
+                )
+        return value
+
+    @property
+    def allowed_host_list(self) -> list[str]:
+        """Hosts accepted in the Host header besides loopback, lowercased."""
+        return list(_split_csv_lower(self.allowed_hosts))
 
     @model_validator(mode="after")
     def _require_bearer_token(self) -> Self:

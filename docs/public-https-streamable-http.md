@@ -58,6 +58,19 @@ NZ_OPENBANK_MCP_HTTP_PORT=8091
 NZ_OPENBANK_MCP_HTTP_PATH=/mcp
 ```
 
+The server checks the `Host` and `Origin` headers of every request before
+authentication. It accepts loopback and, in OAuth mode, the host of
+`NZ_OPENBANK_MCP_PUBLIC_BASE_URL` with its `https` origin. Caddy forwards the
+original `Host`, so OAuth mode needs nothing more. In bearer mode behind a
+proxy, add the public host name, or every request gets HTTP 421:
+
+```bash
+NZ_OPENBANK_MCP_ALLOWED_HOSTS=mcp.example.com
+```
+
+The startup log lists the accepted hosts and warns when only loopback is
+accepted.
+
 OAuth mode refuses to start without these:
 
 - `NZ_OPENBANK_MCP_JWT_SIGNING_KEY`: at least 32 bytes with at least 10
@@ -126,7 +139,7 @@ NZ_OPENBANK_MCP_HTTP_PORT=8091
 NZ_OPENBANK_MCP_HTTP_PATH=/mcp
 ```
 
-The app also accepts `OPENBANK_MCP_BEARER_TOKEN`, `OPENBANK_MCP_HTTP_HOST`,
+The app also accepts `OPENBANK_MCP_BEARER_TOKEN`, `OPENBANK_MCP_ALLOWED_HOSTS`, `OPENBANK_MCP_HTTP_HOST`,
 `OPENBANK_MCP_HTTP_PORT`, `OPENBANK_MCP_HTTP_PATH`, and matching `OPENBANK_MCP_*` OAuth
 names, but the `NZ_OPENBANK_MCP_` names are preferred. The bearer token must be
 at least 32 visible ASCII characters; the server refuses to start in bearer mode otherwise.
@@ -264,6 +277,18 @@ curl -i -X POST https://mcp.example.com/openbank-mcp/mcp \
 ```
 
 Expected result: HTTP 401.
+
+A request whose `Host` or `Origin` is not the public host must be refused
+before authentication. From the server itself:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}
+' -X POST http://127.0.0.1:8091/mcp \n  -H 'Host: wrong.example' -H 'Content-Type: application/json' -d '{}'
+curl -s -o /dev/null -w '%{http_code}
+' -X POST https://mcp.example.com/openbank-mcp/mcp \n  -H 'Origin: https://wrong.example' -H 'Content-Type: application/json' -d '{}'
+```
+
+Expected results: HTTP 421, then HTTP 403.
 
 Bearer-mode authenticated discovery must show 14 tools:
 

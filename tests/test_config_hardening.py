@@ -245,7 +245,7 @@ def test_startup_logs_contain_no_token_material(
 
     monkeypatch.setenv("NZ_OPENBANK_MCP_BEARER_TOKEN", "bearer_secret_0123456789abcdef0123")
     fake_server = type("S", (), {"run": lambda self, **kwargs: None})()
-    monkeypatch.setattr(server, "build_http_server", lambda cfg: fake_server)
+    monkeypatch.setattr(server, "build_http_server", lambda *_: fake_server)
     monkeypatch.setattr(server, "configure_logging", lambda level: None)
     caplog.set_level(logging.DEBUG)
 

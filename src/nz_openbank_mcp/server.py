@@ -120,6 +120,23 @@ def build_http_server(
     return build_server(auth=StaticBearerAuthProvider(http_cfg.bearer_token))
 
 
+def http_guard_options(http_cfg: McpHttpConfig, oauth_cfg: McpOAuthConfig | None) -> dict[str, Any]:
+    """Host and Origin validation for the HTTP app.
+
+    Loopback is always accepted (FastMCP's defaults). Configured hosts and, in
+    OAuth mode, the public base URL's host are added, each with its https
+    origin, since a TLS proxy forwards plain http and a same-origin check
+    would not match.
+    """
+    public = [urlsplit(oauth_cfg.public_base_url).netloc.lower()] if oauth_cfg else []
+    hosts = list(dict.fromkeys([*http_cfg.allowed_host_list, *public]))
+    return {
+        "host_origin_protection": True,
+        "allowed_hosts": hosts,
+        "allowed_origins": [f"https://{host}" for host in hosts],
+    }
+
+
 def log_startup_banner() -> None:
     """Emit a banner describing the current safety posture."""
     cfg = get_config()
@@ -169,22 +186,31 @@ def http_main() -> None:
     """Entry point used by the `nz-openbank-mcp-http` console script."""
     akahu_cfg = get_config()
     http_cfg = McpHttpConfig()
+    oauth_cfg = McpOAuthConfig() if http_cfg.auth_mode == "oauth" else None
     configure_logging(akahu_cfg.log_level)
     log_startup_banner()
+    guard = http_guard_options(http_cfg, oauth_cfg)
     logger.info(
-        "nz-openbank-mcp HTTP starting on %s:%s%s with %s auth",
+        "nz-openbank-mcp HTTP starting on %s:%s%s with %s auth; Host accepted: loopback%s",
         http_cfg.host,
         http_cfg.port,
         http_cfg.path,
         http_cfg.auth_mode,
+        "".join(f", {host}" for host in guard["allowed_hosts"]),
     )
-    build_http_server(http_cfg).run(
+    if not guard["allowed_hosts"]:
+        logger.warning(
+            "Only loopback Host headers are accepted. Behind a reverse proxy, set "
+            "NZ_OPENBANK_MCP_ALLOWED_HOSTS to the public host name or requests get HTTP 421."
+        )
+    build_http_server(http_cfg, oauth_cfg).run(
         transport="streamable-http",
         show_banner=False,
         host=http_cfg.host,
         port=http_cfg.port,
         path=http_cfg.path,
         uvicorn_config={"access_log": False},
+        **guard,
     )
 
 

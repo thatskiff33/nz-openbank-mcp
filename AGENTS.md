@@ -143,8 +143,10 @@ process; the safety layer, client and banner all use it.
 The HTTP entrypoint adds two settings classes, read only by `http_main`:
 
 - `McpHttpConfig`: `NZ_OPENBANK_MCP_AUTH_MODE` (`bearer` or `oauth`),
-  `NZ_OPENBANK_MCP_BEARER_TOKEN`, and `NZ_OPENBANK_MCP_HTTP_HOST`, `_PORT`
-  and `_PATH`.
+  `NZ_OPENBANK_MCP_BEARER_TOKEN`, `NZ_OPENBANK_MCP_HTTP_HOST`, `_PORT` and
+  `_PATH`, and `NZ_OPENBANK_MCP_ALLOWED_HOSTS` (Host values accepted besides
+  loopback; Host and Origin are always validated, and OAuth mode adds the
+  public base URL's host).
 - `McpOAuthConfig` (oauth mode): `NZ_OPENBANK_MCP_GOOGLE_CLIENT_ID` and
   `_SECRET`, `NZ_OPENBANK_MCP_PUBLIC_BASE_URL`, the sign-in allowlist
   `NZ_OPENBANK_MCP_ALLOWED_USERS` and `_ALLOWED_DOMAINS` (Google-verified
