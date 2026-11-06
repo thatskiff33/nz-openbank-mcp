@@ -30,3 +30,18 @@ updates:
     groups:
       build-backend:
         patterns: ["*"]
+
+  # Base image digests in the Dockerfile.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    # Digest and patch updates only; a Python minor upgrade is a deliberate change.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+    groups:
+      docker:
+        patterns: ["*"]

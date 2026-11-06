@@ -322,6 +322,17 @@ def registry_server(base: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def example_config(base: dict[str, Any]) -> dict[str, Any]:
+    """examples/claude_desktop_config.json: pinned launch, placeholder tokens, safe defaults."""
+    env = {
+        setting["var"]: f"{setting['key'].removeprefix('akahu_')}_REPLACE_ME"
+        for setting in base["setting"]
+        if setting.get("sensitive")
+    }
+    env.update({s["var"]: s["default"] for s in base["setting"] if "default" in s})
+    return {"mcpServers": {"nz-openbank": {**launch(base), "env": env}}}
+
+
 def render(base: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return {
         ".claude-plugin/marketplace.json": claude_marketplace(base),
@@ -337,6 +348,7 @@ def render(base: dict[str, Any]) -> dict[str, dict[str, Any]]:
         f"{PLUGIN_DIR}/{GROK_MCP}": grok_mcp(base),
         "mcpb/manifest.json": mcpb_manifest(base),
         "server.json": registry_server(base),
+        "examples/claude_desktop_config.json": example_config(base),
     }
 
 
