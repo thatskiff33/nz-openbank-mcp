@@ -6,6 +6,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+- Account numbers are now shown in full by default. Set `AKAHU_MASK_ACCOUNTS=true` (a new setting in every host's install form) to mask them to the bank code, last four digits and suffix as before. Transaction descriptions and merchant names were never masked, and the docs now say so.
 - Display name is now "NZ Open Banking MCP (Akahu)" in every plugin, extension and registry manifest.
 - `txn_get_transactions` and `txn_search_transactions` return `limit_reached: true` when the result holds `limit` items and more may exist. Before, a range with more transactions than `limit` came back looking complete.
 - An account balance with no currency is reported as `currency: null` instead of being assumed to be NZD.

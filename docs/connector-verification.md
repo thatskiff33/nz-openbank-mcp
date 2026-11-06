@@ -204,21 +204,21 @@ Run `acct_list_accounts` from ChatGPT or from local Claude.
 Expected pass:
 
 - The tool returns connected accounts.
-- Account identifiers are masked with asterisks.
-- No full bank account number is visible.
+- Account numbers are shown in full, or masked with asterisks when
+  `AKAHU_MASK_ACCOUNTS=true` is set.
 - The response is not copied into an issue, PR, or chat transcript.
 
 Expected fail:
 
 - The tool cannot connect even though the connector is ready.
-- A full unmasked account number appears.
+- A full account number appears while `AKAHU_MASK_ACCOUNTS=true` is set.
 - The response includes token values.
 - Raw private financial output is captured in a ticket, PR, screenshot, or log.
 
 Record only this kind of result:
 
 ```text
-acct_list_accounts: pass - returned masked account details
+acct_list_accounts: pass - returned account details
 ```
 
 Do not record the account rows themselves.
@@ -280,8 +280,7 @@ claude mcp get nz-openbank
 Expected pass:
 
 - `/mcp` or `claude mcp list` shows `nz-openbank` or `nz-openbank-mcp` connected.
-- A read prompt can call `acct_list_accounts` and returns masked account
-  details.
+- A read prompt can call `acct_list_accounts` and returns account details.
 - A write prompt refuses while read-only mode is true.
 
 Expected fail:
@@ -299,7 +298,7 @@ Use the `.mcpb` Desktop Extension from the release bundle, or the manual
 Expected pass:
 
 - Claude Desktop shows the extension or MCP server as enabled and connected.
-- `acct_list_accounts` returns masked account details.
+- `acct_list_accounts` returns account details.
 - A write tool refuses while read-only mode is true.
 
 Expected fail:
@@ -318,7 +317,7 @@ chatgpt-discovery: pass - connector discovered tools through tunnel
 public-https-401: pass|not-run - reason
 public-https-auth-discovery: pass|not-run - reason
 web-oauth: pass|not-run - reason
-read-check: pass - acct_list_accounts returned masked account details
+read-check: pass - acct_list_accounts returned account details
 write-check: pass - read-only write refused locally
 claude-code: pass|not-run - reason
 claude-desktop: pass|not-run - reason

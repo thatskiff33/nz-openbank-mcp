@@ -23,7 +23,12 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
 USER_CONFIG_REF = re.compile(r"^\$\{user_config\.([a-z0-9_]+)\}$")
-SAFE_DEFAULTS = {"akahu_read_only": "true", "akahu_automation_bypass": "false"}
+# Defaults every host must ship. Masking is off by owner decision (epic #53).
+SAFE_DEFAULTS = {
+    "akahu_read_only": "true",
+    "akahu_automation_bypass": "false",
+    "akahu_mask_accounts": "false",
+}
 SENSITIVE_KEYS = {"akahu_user_token", "akahu_app_token"}
 
 errors: list[str] = []

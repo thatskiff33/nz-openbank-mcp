@@ -41,6 +41,12 @@
       "title": "Automation bypass",
       "description": "Skip per-call consent prompts for safe-to-automate writes (account refresh only). Requires read-only=false.",
       "default": "false"
+    },
+    "akahu_mask_accounts": {
+      "type": "string",
+      "title": "Mask account numbers",
+      "description": "When 'true', account numbers show only the bank code, last four digits and suffix. Default 'false' shows them in full. Transaction descriptions are never masked.",
+      "default": "false"
     }
   }
 }

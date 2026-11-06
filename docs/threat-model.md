@@ -86,7 +86,8 @@ comes from a reverse proxy in front of a public URL such as
   have no finer-grained scopes. This server has no per-account allowlist, so
   any read tool can reach any connected account.
 - **The LLM sees whatever data the user asks for.** Tool results, including
-  balances, descriptions and masked account numbers, go to the MCP client and
+  balances, descriptions and account numbers (masked only when
+  `AKAHU_MASK_ACCOUNTS=true`), go to the MCP client and
   model provider. The provider's retention policy applies, and this server
   cannot control it.
 - **Consent depends on the MCP client.** The server sends the prompt, but the

@@ -362,3 +362,14 @@ def test_oauth_config_rejects_bad_allowlist_entries(
 
     with pytest.raises(ValidationError, match=message):
         McpOAuthConfig()
+
+
+def test_mask_accounts_defaults_off_and_reads_the_environment(
+    fake_env: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from nz_openbank_mcp.config import AkahuConfig
+
+    monkeypatch.delenv("AKAHU_MASK_ACCOUNTS", raising=False)
+    assert AkahuConfig().mask_accounts is False
+    monkeypatch.setenv("AKAHU_MASK_ACCOUNTS", "true")
+    assert AkahuConfig().mask_accounts is True

@@ -104,8 +104,10 @@ banner.
 
 **Data handling:**
 
-- Every account number shown goes through `mask_account`, which fails
-  closed: formats other than NZ keep only their last four digits.
+- Account fields are shown in full unless `AKAHU_MASK_ACCOUNTS=true`; then
+  they go through `mask_account`, which fails closed: formats other than NZ
+  keep only their last four digits. Transaction descriptions and merchant
+  names are never masked.
 - `format_money` renders NZD as `$1,234.56` and other codes as
   `USD 1,234.56`; an empty code means NZD, and `None` gives `1,234.56`.
 - Akahu transactions have no currency field. Tools format each one in its
