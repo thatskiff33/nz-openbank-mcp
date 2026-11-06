@@ -394,7 +394,7 @@ def test_env_file_mode_not_checked_off_posix(
     env_file.write_text("AKAHU_READ_ONLY=false\n")
     env_file.chmod(0o666)
     monkeypatch.setenv("AKAHU_ENV_FILE", str(env_file))
-    monkeypatch.setattr(config, "_POSIX", False)
+    monkeypatch.setattr(config.sys, "platform", "win32")
 
     assert config.explicit_env_file() == env_file
 

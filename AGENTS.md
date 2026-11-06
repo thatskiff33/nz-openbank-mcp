@@ -31,6 +31,10 @@ Other useful commands: `uv run nz-openbank-mcp` (stdio server from the
 checkout), `FASTMCP_ENV_FILE=/dev/null uv run fastmcp dev
 src/nz_openbank_mcp/server.py` (inspector), `uv build`.
 
+On Windows, run `uv run pytest --no-cov` (POSIX-only lines cannot run there;
+CI's Linux job enforces coverage), and run the `pip-audit` pipe in Git Bash or
+from an exported requirements file.
+
 A `DeprecationWarning` raised from `nz_openbank_mcp` or `tests` fails the
 suite. Python is 3.14+; CI also tests 3.15. Runtime dependencies are capped
 at the next major version because `uvx` resolves fresh on each launch and

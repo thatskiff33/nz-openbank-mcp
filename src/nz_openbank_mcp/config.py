@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import os
 import re
+import sys
 from functools import cache
 from pathlib import Path
 from typing import Literal, Self
@@ -49,8 +50,6 @@ _LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 # host or host:port; a bracketed IPv6 address is allowed. No scheme, path or wildcard.
 _HOST_ENTRY = re.compile(r"(?:\[[0-9a-f:.]+\]|[a-z0-9._-]+)(?::(\d{1,5}))?")
 _MAX_PORT = 65535
-# Windows reports every file as group/other writable, so the mode check is POSIX only.
-_POSIX = os.name == "posix"
 
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 
@@ -65,7 +64,9 @@ def explicit_env_file() -> Path | None:
         raise ValueError(f"{ENV_FILE_VAR} must be an absolute path")
     if not path.is_file():
         raise ValueError(f"{ENV_FILE_VAR} does not name a file: {path}")
-    if _POSIX:
+    # Windows reports every file as group/other writable, so the mode check is
+    # POSIX only. A literal sys.platform test lets mypy skip os.getuid on Windows.
+    if sys.platform != "win32":
         st = path.stat()
         if st.st_mode & 0o022:
             raise ValueError(f"{ENV_FILE_VAR} must not be writable by group or others: {path}")

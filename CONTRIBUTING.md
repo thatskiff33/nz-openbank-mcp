@@ -17,7 +17,8 @@ uv sync --extra dev
 uv run nz-openbank-mcp     # stdio server from your checkout
 ```
 
-Python 3.14 or newer is required.
+Python 3.14 or newer is required. `.python-version` pins 3.14 so `uv sync`
+does not pick a newer interpreter that some dependencies have no wheels for.
 
 ## Checks
 
@@ -39,6 +40,10 @@ Coverage is a hard gate: a change that leaves any line or branch untested
 fails. Add tests with the code, using the fixtures in `tests/conftest.py`.
 Fixtures and examples must be synthetic: no real tokens, account numbers,
 transactions, names or email addresses.
+
+On Windows, run `uv run pytest --no-cov`: some POSIX-only lines cannot run
+there, and CI's Linux job enforces coverage. The `pip-audit` pipe needs Git
+Bash, or export the requirements to a file and pass that to `-r`.
 
 ## Changing the code
 
