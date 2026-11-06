@@ -20,6 +20,7 @@ FIXTURES = Path(__file__).parent / "fixtures"
 # scripts, so the tests that check those are skipped in an unpacked sdist.
 if not (Path(__file__).resolve().parent.parent / "scripts").is_dir():
     collect_ignore = [
+        "test_commit_emails.py",
         "test_mcpb_bundle_check.py",
         "test_packaging_faults.py",
         "test_plugin_manifests.py",

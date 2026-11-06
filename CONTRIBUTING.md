@@ -75,3 +75,8 @@ maintainer; see [PUBLISHING.md](https://github.com/thatskiff33/nz-openbank-mcp/b
 
 Plain, specific writing in code, comments, commits and docs: no emojis and no
 em dashes. Comments explain why, not what.
+
+Commit with your GitHub noreply address
+(`git config user.email <id>+<login>@users.noreply.github.com`). A required
+check fails any PR whose commits use another address, or whose
+`Co-authored-by` trailers, title or body contain a personal address.
