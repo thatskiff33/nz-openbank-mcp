@@ -180,7 +180,7 @@ Jobs:
 - `publish-testpypi` (dry run only, after `build` and `build-mcpb`) uploads to
   TestPyPI. `publish-npm-dry-run` (dry run only) runs the npm publish command
   with `--dry-run`, which sends nothing.
-- `github-release` (publish only, after `publish`) attests the wheel, sdist and
+- `github-release` (publish only, after `publish` and `publish-npm`, so its notes never announce an npm version that failed) attests the wheel, sdist and
   `.mcpb`, creates the GitHub Release as a draft with those files and the
   changelog section as notes, then publishes it as the latest release. It is
   the only job with repository write access.

@@ -241,7 +241,7 @@ jobs:
 
   github-release:
     name: publish the GitHub Release with wheel, sdist and .mcpb
-    needs: [build, build-mcpb, publish]
+    needs: [build, build-mcpb, publish, publish-npm]
     if: inputs.publish
     runs-on: ubuntu-latest
     timeout-minutes: 10
