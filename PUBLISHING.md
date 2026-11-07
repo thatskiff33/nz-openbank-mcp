@@ -37,6 +37,8 @@ or renamed. Step 5 is done once, on the day of the first npm release.
 
 2. GitHub environments (**Settings -> Environments**):
    - `pypi`: required reviewer (the maintainer); deployment tags `v*` only.
+   - `npm`: the same as `pypi`, for the npm publish. A separate environment
+     means a token minted for one index is never accepted by the other.
    - `testpypi`: deployment tags `v*` only; no reviewer, so dry runs are not
      blocked.
 
@@ -70,11 +72,11 @@ or renamed. Step 5 is done once, on the day of the first npm release.
       publisher expires unless it completes a publish within 2 days (npm
       docs). If it expires, remove it (`npm trust list nz-openbank-mcp`, then
       `npm trust revoke nz-openbank-mcp --id=<id>`) and add it again. The
-      environment is `pypi`, the same one PyPI uses. Check that the listing
-      shows `release.yml` and `pypi` before approving the release:
+      environment is `npm`. Check that the listing shows `release.yml` and
+      `npm` before approving the release:
 
       ```bash
-      npm trust github nz-openbank-mcp --file release.yml --repo thatskiff33/nz-openbank-mcp --env pypi --allow-publish
+      npm trust github nz-openbank-mcp --file release.yml --repo thatskiff33/nz-openbank-mcp --env npm --allow-publish
       npm trust list nz-openbank-mcp
       npm logout
       ```
@@ -152,8 +154,9 @@ or renamed. Step 5 is done once, on the day of the first npm release.
    gh workflow run release.yml --ref vX.Y.Z -f publish=true
    ```
 
-5. **Approve the `pypi` deployment** in the Actions run when it pauses. One
-   approval releases both `publish` (PyPI) and `publish-npm`.
+5. **Approve the `pypi` and `npm` deployments** in the Actions run when it
+   pauses; tick both environments in the one review dialog. That releases
+   both `publish` (PyPI) and `publish-npm`.
 
 Do not create the GitHub Release by hand. Releases are immutable once
 published, so the workflow creates it as a draft, attaches the files and only
@@ -187,7 +190,8 @@ Jobs:
 - `publish` (publish only, after `build`, `build-mcpb` and `build-npm`) waits
   for `pypi` environment approval, then publishes to PyPI. Nothing is
   published unless every build and the changelog check passed.
-- `publish-npm` (publish only, same approval) checks the tarball against the
+- `publish-npm` (publish only, after the same builds; waits for `npm`
+  environment approval) checks the tarball against the
   `build-npm` sha256, waits until PyPI serves the wheel this run built (so the
   launcher never points at a missing release), then runs `npm publish
   --provenance` by trusted publishing, with the exact Node version set in
@@ -218,7 +222,7 @@ https://github.com/thatskiff33/nz-openbank-mcp/releases.
 npm never accepts the same version twice. If `publish-npm` fails after PyPI
 succeeded, fix the cause (often an expired or missing trusted publisher, see
 one-time setup step 5) and re-run only the failed jobs from the same workflow
-run. The re-run waits for a new `pypi` approval; `publish-registry` runs once
+run. The re-run waits for a new `npm` approval; `publish-registry` runs once
 npm succeeds.
 
 ## Manual publish (fallback)

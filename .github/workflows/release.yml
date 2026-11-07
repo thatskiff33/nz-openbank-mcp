@@ -10,10 +10,11 @@
 #   - The tagged commit must be on main with a successful ci.yml push run.
 #   - PyPI, TestPyPI and npm authenticate via Trusted Publishing (OIDC); no
 #     API tokens are stored. See PUBLISHING.md for the one-time setup.
-#   - The 'pypi' and 'testpypi' environments accept only v* tags; 'pypi' also
-#     requires a reviewer. The npm launcher publishes from the 'pypi'
-#     environment too, so one approval covers both, and only once PyPI serves
-#     the wheel it launches. The dry run checks the npm publish with --dry-run.
+#   - The 'pypi', 'npm' and 'testpypi' environments accept only v* tags;
+#     'pypi' and 'npm' also require a reviewer. Each has its own trusted
+#     publisher, so a token minted for one index is never accepted by the
+#     other. The npm launcher publishes only once PyPI serves the wheel it
+#     launches. The dry run checks the npm publish with --dry-run.
 #   - Release assets carry GitHub build provenance (`gh attestation verify`).
 #   - After PyPI, server.json goes to the MCP Registry, authenticated by
 #     GitHub OIDC for the io.github.thatskiff33/* namespace.
@@ -341,8 +342,8 @@ jobs:
 
   publish:
     name: publish to PyPI
-    # build-npm too, so this and publish-npm wait for the 'pypi' approval at
-    # the same time and one approval releases both.
+    # build-npm too, so this and publish-npm wait for approval at the same
+    # time and one review can approve both environments.
     needs: [build, build-mcpb, build-npm]
     if: inputs.publish
     runs-on: ubuntu-latest
@@ -372,7 +373,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment:
-      name: pypi
+      name: npm
       url: https://www.npmjs.com/package/nz-openbank-mcp
     permissions:
       id-token: write # OIDC token for npm trusted publishing and provenance
