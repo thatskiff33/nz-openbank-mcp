@@ -264,8 +264,8 @@ To release: bump `version` in `pyproject.toml` and `__version__` in
 `## X.Y.Z - <date>`, regenerate the manifests, merge, tag the
 merge commit `vX.Y.Z`, run `gh workflow run release.yml --ref vX.Y.Z` for the
 TestPyPI dry run, then run `gh workflow run release.yml --ref vX.Y.Z -f
-publish=true` and approve the `pypi` environment (one approval releases
-both PyPI and npm). The workflow creates and
+publish=true` and approve the `pypi` and `npm` environments (one review
+dialog covers both). The workflow creates and
 publishes the GitHub Release itself; never create it by hand, because releases
 are immutable once published. `release.yml` builds only a tag whose commit is
 on `main` with a green `ci.yml` push run. `PUBLISHING.md` has the full steps.

@@ -1,6 +1,6 @@
 {
   "name": "nz-openbank-mcp",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "Unofficial MCP server for the Akahu open-finance API (NZ). 14 tools, read-only by default, runs locally over stdio. Starts the PyPI release with uvx, so it needs uv.",
   "mcpName": "io.github.thatskiff33/nz-openbank-mcp",
   "license": "Apache-2.0",
