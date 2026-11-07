@@ -417,6 +417,9 @@ def check_npm(version: str) -> None:
     for name in NPM_FORBIDDEN_FILES:
         if (ROOT / "npm" / name).exists():
             fail(f"npm/{name} must not exist")
+    # npm pack ./npm also reads the repository root's .npmrc.
+    if (ROOT / ".npmrc").exists():
+        fail(".npmrc must not exist at the repo root")
     for entry, script in NPM_BINS.items():
         path = ROOT / "npm" / script
         text = path.read_text(encoding="utf-8") if path.is_file() else ""
@@ -424,10 +427,16 @@ def check_npm(version: str) -> None:
             fail(f"npm/{script}: must call require('../lib/launch.js').run('{entry}')")
     launcher = ROOT / "npm" / "lib" / "launch.js"
     source = launcher.read_text(encoding="utf-8") if launcher.is_file() else ""
-    for needle in ("spawn('uvx', uvxArgs(", "'--from', `${PACKAGE}==${version}`"):
+    for needle in (
+        "findUvx(process.env.PATH",
+        "spawn(uvx, uvxArgs(entry, args),",
+        "'--from', `${PACKAGE}==${version}`",
+    ):
         if needle not in source:
             fail(f"npm/lib/launch.js: must contain {needle!r}")
-    if "shell:" in "".join(source.split()):
+    # Outside comments, the word "shell" (as in a shell spawn option) is refused.
+    code = [line for line in source.splitlines() if not line.strip().startswith("//")]
+    if any("shell" in line for line in code):
         fail("npm/lib/launch.js: must not start uvx through a shell")
 
 

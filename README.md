@@ -113,7 +113,7 @@ fetches the release and a matching Python.
 | Grok Build | Plugin from this repo's marketplace | Environment Grok starts in |
 | claude.ai, ChatGPT, grok.com | Self-hosted HTTPS server with OAuth | Your server's environment |
 | ChatGPT Business | OpenAI Secure MCP Tunnel (no public server) | Your host's environment |
-| Anything else that speaks MCP | `uvx nz-openbank-mcp` or `npx -y nz-openbank-mcp` | Environment of the client |
+| Anything else that speaks MCP | `uvx nz-openbank-mcp` or `npx -y nz-openbank-mcp@X.Y.Z` | Environment of the client |
 
 Every option below starts with `AKAHU_READ_ONLY=true` and
 `AKAHU_AUTOMATION_BYPASS=false`.

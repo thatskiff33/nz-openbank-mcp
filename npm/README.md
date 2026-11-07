@@ -34,8 +34,15 @@ same version. It has no dependencies and no install scripts.
 ```
 
 Replace `X.Y.Z` with a published version so the server does not change under
-you. `nz-openbank-mcp-http` starts the authenticated Streamable HTTP server
-the same way.
+you. The authenticated Streamable HTTP server is a second command in the same
+package:
+
+```bash
+npx -y -p nz-openbank-mcp@X.Y.Z nz-openbank-mcp-http
+```
+
+`npx` reads `.npmrc` and `node_modules` from the directory it starts in, so
+start it from a directory you trust, such as your home directory.
 
 Settings, the tool list, the safety model and the other install routes
 (Claude Code and other plugins, the Claude Desktop Extension, Docker) are in

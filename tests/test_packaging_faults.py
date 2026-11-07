@@ -396,14 +396,14 @@ def test_npm_config_and_lock_files_are_refused(checkout: Path, name: str) -> Non
         (
             "npm/lib/launch.js",
             "{ stdio: 'inherit', windowsHide: true }",
-            "{ stdio: 'inherit', shell: true }",
+            "{ stdio: 'inherit', windowsHide: true, ...{ shell: true } }",
             "must not start uvx through a shell",
         ),
         (
             "npm/lib/launch.js",
-            "spawn('uvx', uvxArgs(",
-            "spawn('pipx', uvxArgs(",
-            "must contain \"spawn('uvx', uvxArgs(\"",
+            "spawn(uvx, uvxArgs(entry, args),",
+            "spawn('uvx', uvxArgs(entry, args),",
+            "must contain 'spawn(uvx, uvxArgs(entry, args),'",
         ),
         (
             "npm/bin/nz-openbank-mcp-http.js",
@@ -438,3 +438,10 @@ def test_registry_must_list_pypi_and_npm_at_the_release_version(checkout: Path) 
     assert "npm package must use https://registry.npmjs.org with runtimeHint 'npx'" in (
         result.stderr
     )
+
+
+def test_root_npmrc_is_refused(checkout: Path) -> None:
+    (checkout / ".npmrc").write_text("registry=https://example.invalid/", encoding="utf-8")
+    result = _check(checkout)
+    assert result.returncode == 1
+    assert ".npmrc must not exist at the repo root" in result.stderr

@@ -6,70 +6,127 @@
 // may write to stdout. No shell is involved, so arguments pass through as-is.
 
 const { spawn } = require('node:child_process');
-const { EOL } = require('node:os');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { isatty } = require('node:tty');
 const { version } = require('../package.json');
 
 const PACKAGE = 'nz-openbank-mcp';
 const UV_INSTALL = 'https://docs.astral.sh/uv/getting-started/installation/';
-// Hosts stop servers with SIGTERM, which only reaches this process, so it is
-// passed on. Ctrl+C reaches the whole process group (on Windows, every process
-// on the console), so uvx already gets SIGINT: forwarding it would deliver it
-// twice and turn a graceful shutdown into a forced one. The launcher only stays
-// alive until uvx exits.
-const FORWARDED_SIGNALS = ['SIGTERM', 'SIGHUP'];
-const IGNORED_SIGNALS = ['SIGINT'];
+const WINDOWS = process.platform === 'win32';
 
 function uvxArgs(entry, args) {
   return ['--from', `${PACKAGE}==${version}`, entry, ...args];
 }
 
-function run(entry, args = process.argv.slice(2)) {
-  const child = spawn('uvx', uvxArgs(entry, args), { stdio: 'inherit', windowsHide: true });
-  let startFailed = false;
+// uvx from an absolute PATH directory. Searched here rather than by spawn,
+// because Windows would look in the current directory first.
+function findUvx(pathValue) {
+  const name = WINDOWS ? 'uvx.exe' : 'uvx';
+  for (const entry of pathValue.split(path.delimiter)) {
+    const dir = entry.startsWith('"') && entry.endsWith('"') ? entry.slice(1, -1) : entry;
+    if (!path.isAbsolute(dir)) {
+      continue;
+    }
+    const candidate = path.join(dir, name);
+    try {
+      fs.accessSync(candidate, fs.constants.X_OK);
+      if (fs.statSync(candidate).isFile()) {
+        return candidate;
+      }
+    } catch {
+      // Not in this directory.
+    }
+  }
+  return null;
+}
 
+// Hosts stop servers with SIGTERM (or SIGINT), sent to this process only, so
+// those are passed on. In a terminal, Ctrl+C already reaches uvx through the
+// process group (on Windows, every process on the console), so SIGINT is not
+// passed on there: a second one would turn a graceful shutdown into a forced
+// one. Windows cannot send SIGHUP to a child.
+function forwardedSignals(interactive) {
+  const signals = ['SIGTERM'];
+  if (!WINDOWS) {
+    signals.push('SIGHUP');
+  }
+  if (!interactive) {
+    signals.push('SIGINT');
+  }
+  return signals;
+}
+
+function run(entry, args = process.argv.slice(2)) {
+  const uvx = findUvx(process.env.PATH || '');
+  if (uvx === null) {
+    process.stderr.write(
+      `${entry}: uvx was not found on PATH. This npm package starts the Python ` +
+        `release from PyPI with uv. Install uv (${UV_INSTALL}), then try again.${os.EOL}`,
+    );
+    process.exitCode = 127;
+    return;
+  }
+
+  let child;
+  try {
+    child = spawn(uvx, uvxArgs(entry, args), { stdio: 'inherit', windowsHide: true });
+  } catch (error) {
+    process.stderr.write(`${entry}: could not start uvx: ${error.message}${os.EOL}`);
+    process.exitCode = 1;
+    return;
+  }
+
+  let started = false;
+  const interactive = isatty(0);
+  const forwarded = forwardedSignals(interactive);
+  const ignored = interactive ? ['SIGINT'] : [];
   const forward = (signal) => {
     if (child.exitCode === null && child.signalCode === null) {
-      child.kill(signal);
+      try {
+        child.kill(signal);
+      } catch {
+        // Already gone; the exit event reports how it ended.
+      }
     }
   };
   const ignore = () => {};
-  const stopForwarding = () => {
-    for (const signal of FORWARDED_SIGNALS) {
+  const stopHandling = () => {
+    for (const signal of forwarded) {
       process.removeListener(signal, forward);
     }
-    for (const signal of IGNORED_SIGNALS) {
+    for (const signal of ignored) {
       process.removeListener(signal, ignore);
     }
   };
-  for (const signal of FORWARDED_SIGNALS) {
+  for (const signal of forwarded) {
     process.on(signal, forward);
   }
-  for (const signal of IGNORED_SIGNALS) {
+  for (const signal of ignored) {
     process.on(signal, ignore);
   }
 
+  child.on('spawn', () => {
+    started = true;
+  });
+
   child.on('error', (error) => {
-    startFailed = true;
-    stopForwarding();
-    if (error.code === 'ENOENT') {
-      process.stderr.write(
-        `${entry}: uvx was not found on PATH. This npm package starts the Python ` +
-          `release from PyPI with uv. Install uv (${UV_INSTALL}), then try again.${EOL}`,
-      );
-      process.exitCode = 127;
-    } else {
-      process.stderr.write(`${entry}: could not start uvx: ${error.message}${EOL}`);
-      process.exitCode = 1;
+    // After the start, an error is a failed kill(); the exit event follows.
+    if (started) {
+      return;
     }
+    stopHandling();
+    process.stderr.write(`${entry}: could not start uvx: ${error.message}${os.EOL}`);
+    process.exitCode = 1;
   });
 
   child.on('exit', (code, signal) => {
-    stopForwarding();
-    if (startFailed) {
-      return;
-    }
+    stopHandling();
     if (signal) {
-      // End the same way the server did, so the host sees the same signal.
+      // End the same way the server did. If this process ignores that signal
+      // (Node ignores SIGPIPE), the shell convention 128 + n still reports it.
+      process.exitCode = 128 + (os.constants.signals[signal] || 0);
       process.kill(process.pid, signal);
       return;
     }
@@ -77,4 +134,4 @@ function run(entry, args = process.argv.slice(2)) {
   });
 }
 
-module.exports = { run, uvxArgs };
+module.exports = { findUvx, run, uvxArgs };

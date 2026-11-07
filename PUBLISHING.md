@@ -17,7 +17,8 @@ install scripts.
 
 ## One-time setup
 
-Already done for this repository; repeat only if it is moved or renamed.
+Steps 1 to 4 are done for this repository; repeat them only if it is moved
+or renamed. Step 5 is done once, on the day of the first npm release.
 
 1. Trusted publishers, on https://pypi.org and https://test.pypi.org
    (**Your account -> Publishing**; for an existing project, **Manage ->
@@ -48,11 +49,12 @@ Already done for this repository; repeat only if it is moved or renamed.
 4. Repository presentation (**Settings -> General -> Social preview**): upload
    `docs/assets/social-preview.png` (1280x640). GitHub has no API for this.
 
-5. npm, by the owner of the npm account (not done yet; the first npm release
-   is 0.1.8). Use npm 11.15.0 or later for `npm trust`.
+5. npm, by the owner of the npm account, on the day of the first npm
+   release and just before approving it. `npm trust` was checked with npm
+   11.16.0.
 
-   1. Sign in on https://www.npmjs.com and check that two-factor
-      authentication is on for authorisation and writes.
+   1. `npm login`, signing in to the account that will own the package, and
+      check that two-factor authentication is on for authorisation and writes.
    2. Claim the name. npm only accepts a trusted publisher for a package that
       already exists. From a folder outside this repository that holds only a
       `package.json` (name `nz-openbank-mcp`, version `0.0.0-placeholder.0`)
@@ -64,25 +66,32 @@ Already done for this repository; repeat only if it is moved or renamed.
       npm deprecate nz-openbank-mcp@0.0.0-placeholder.0 "Placeholder with no code; use 0.1.8 or later"
       ```
 
-   3. On release day, not before: a new trusted publisher expires unless it
-      completes a publish within 2 days (npm docs). If it expires, remove it
-      (`npm trust list nz-openbank-mcp`, then `npm trust revoke
-      nz-openbank-mcp --id=<id>`) and add it again. The environment is
-      `pypi`, the same one PyPI uses:
+   3. Add the trusted publisher, on the release day only: a new trusted
+      publisher expires unless it completes a publish within 2 days (npm
+      docs). If it expires, remove it (`npm trust list nz-openbank-mcp`, then
+      `npm trust revoke nz-openbank-mcp --id=<id>`) and add it again. The
+      environment is `pypi`, the same one PyPI uses. Check that the listing
+      shows `release.yml` and `pypi` before approving the release:
 
       ```bash
       npm trust github nz-openbank-mcp --file release.yml --repo thatskiff33/nz-openbank-mcp --env pypi --allow-publish
+      npm trust list nz-openbank-mcp
       npm logout
       ```
 
       Or use the package's **Settings -> Trusted Publisher** page with the same
       owner, repository, workflow filename and environment.
-   4. After the first release publishes from CI: the package's **Settings ->
-      Publishing access**, "Require two-factor authentication and disallow
-      bypass 2fa tokens". Publishing from CI is unaffected.
-   5. Within 72 hours of the placeholder, while npm's
-      [unpublish policy](https://docs.npmjs.com/policies/unpublish) allows it
-      without conditions, remove it:
+   4. After the first release publishes from CI, sign in again: on the
+      package's **Settings -> Publishing access** page, choose the option that
+      requires two-factor authentication and disallows tokens (npm's docs call
+      it "Require two-factor authentication and disallow tokens"). Publishing
+      from CI is unaffected.
+   5. Only once the first real release is on npm, remove the placeholder.
+      Never do this while the placeholder is the only version: that deletes
+      the package and its trusted publisher, and npm then blocks new versions
+      for 24 hours. Do it within 72 hours of publishing the placeholder, while
+      npm's [unpublish policy](https://docs.npmjs.com/policies/unpublish)
+      allows it without conditions, then `npm logout`:
 
       ```bash
       npm dist-tag rm nz-openbank-mcp placeholder
@@ -179,8 +188,10 @@ Jobs:
 - `publish-npm` (publish only, same approval) checks the tarball against the
   `build-npm` sha256, waits until PyPI serves the wheel this run built (so the
   launcher never points at a missing release), then runs `npm publish
-  --provenance` by trusted publishing. If the PyPI upload failed, it times out
-  and nothing reaches npm.
+  --provenance` by trusted publishing, with the exact Node version set in
+  `NPM_NODE_VERSION`. If the PyPI upload failed, it times out and nothing
+  reaches npm. The npm jobs run no repository code: they only pack, check and
+  publish.
 - `publish-image` (publish only, after `publish`) builds the amd64 and arm64
   image from the wheel the `build` job made, after checking that its sha256
   matches the file on PyPI (the image build runs no build backend), pushes it to `ghcr.io/thatskiff33/nz-openbank-mcp` tagged `X.Y.Z`,
@@ -205,7 +216,8 @@ https://github.com/thatskiff33/nz-openbank-mcp/releases.
 npm never accepts the same version twice. If `publish-npm` fails after PyPI
 succeeded, fix the cause (often an expired or missing trusted publisher, see
 one-time setup step 5) and re-run only the failed jobs from the same workflow
-run; `publish-registry` runs once npm succeeds.
+run. The re-run waits for a new `pypi` approval; `publish-registry` runs once
+npm succeeds.
 
 ## Manual publish (fallback)
 
