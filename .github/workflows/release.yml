@@ -7,10 +7,12 @@
 #     publishes it. Releases are immutable once published, so assets must be
 #     attached while the release is still a draft.
 #   - The tagged commit must be on main with a successful ci.yml push run.
-#   - PyPI and TestPyPI authenticate via Trusted Publishing (OIDC); no API
-#     tokens are stored. See PUBLISHING.md for the one-time setup.
+#   - PyPI, TestPyPI and npm authenticate via Trusted Publishing (OIDC); no
+#     API tokens are stored. See PUBLISHING.md for the one-time setup.
 #   - The 'pypi' and 'testpypi' environments accept only v* tags; 'pypi' also
-#     requires a reviewer.
+#     requires a reviewer. The npm launcher publishes from the 'pypi'
+#     environment too, so one approval covers both, and only once PyPI serves
+#     the wheel it launches. The dry run checks the npm publish with --dry-run.
 #   - Release assets carry GitHub build provenance (`gh attestation verify`).
 #   - After PyPI, server.json goes to the MCP Registry, authenticated by
 #     GitHub OIDC for the io.github.thatskiff33/* namespace.
@@ -190,6 +192,47 @@ jobs:
           path: dist/*.mcpb
           if-no-files-found: error
 
+  # The npm launcher tarball, checked file for file against npm/ and the tag.
+  # Its name and sha256 are job outputs, which later jobs check it against.
+  build-npm:
+    name: pack the npm launcher
+    needs: ci-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      tarball: ${{ steps.pack.outputs.tarball }}
+      sha256: ${{ steps.pack.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+
+      - name: pack, check against npm/ and the tag
+        id: pack
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          tarball="nz-openbank-mcp-${version}.tgz"
+          mkdir -p npm-tarball
+          npm pack ./npm --pack-destination npm-tarball --ignore-scripts
+          python3 scripts/check_npm_tarball.py "npm-tarball/$tarball" "$version"
+          sha256=$(sha256sum "npm-tarball/$tarball" | cut -d' ' -f1)
+          echo "tarball=$tarball" >> "$GITHUB_OUTPUT"
+          echo "sha256=$sha256" >> "$GITHUB_OUTPUT"
+          echo "npm tarball $tarball, sha256 $sha256" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: upload npm tarball
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: npm-tarball
+          path: npm-tarball/
+          if-no-files-found: error
+
   github-release:
     name: publish the GitHub Release with wheel, sdist and .mcpb
     needs: [build, build-mcpb, publish]
@@ -238,6 +281,35 @@ jobs:
             --verify-tag --draft --title "$GITHUB_REF_NAME" --notes-file notes.md
           gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --latest
 
+  publish-npm-dry-run:
+    name: npm publish (dry run)
+    needs: build-npm
+    if: ${{ !inputs.publish }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: download npm tarball
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: npm-tarball
+          path: npm-tarball/
+
+      - name: tarball matches the build-npm checksum
+        env:
+          TARBALL: ${{ needs.build-npm.outputs.tarball }}
+          SHA256: ${{ needs.build-npm.outputs.sha256 }}
+        run: echo "$SHA256  npm-tarball/$TARBALL" | sha256sum --check --strict
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+
+      # The publish-npm command without --provenance, which needs its OIDC token.
+      - env:
+          TARBALL: ${{ needs.build-npm.outputs.tarball }}
+        run: npm publish "./npm-tarball/$TARBALL" --access public --ignore-scripts --dry-run
+
   publish-testpypi:
     name: publish to TestPyPI (dry run)
     needs: [build, build-mcpb]
@@ -263,7 +335,9 @@ jobs:
 
   publish:
     name: publish to PyPI
-    needs: [build, build-mcpb]
+    # build-npm too, so this and publish-npm wait for the 'pypi' approval at
+    # the same time and one approval releases both.
+    needs: [build, build-mcpb, build-npm]
     if: inputs.publish
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -282,9 +356,83 @@ jobs:
       - name: publish to PyPI
         uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
 
+  # npm, by trusted publishing (OIDC) with provenance; no npm token is stored.
+  # The launcher runs the PyPI release of the same version, so this publishes
+  # only once PyPI serves the wheel this run built.
+  publish-npm:
+    name: publish the launcher to npm
+    needs: [build, build-mcpb, build-npm]
+    if: inputs.publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: pypi
+      url: https://www.npmjs.com/package/nz-openbank-mcp
+    permissions:
+      id-token: write # OIDC token for npm trusted publishing and provenance
+    steps:
+      - name: download npm tarball
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: npm-tarball
+          path: npm-tarball/
+
+      - name: tarball matches the build-npm checksum
+        env:
+          TARBALL: ${{ needs.build-npm.outputs.tarball }}
+          SHA256: ${{ needs.build-npm.outputs.sha256 }}
+        run: echo "$SHA256  npm-tarball/$TARBALL" | sha256sum --check --strict
+
+      - name: download package artefacts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: dist/
+
+      # If the PyPI upload failed, this times out and nothing reaches npm.
+      - name: wait until PyPI serves this run's wheel
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          wheel="dist/nz_openbank_mcp-${version}-py3-none-any.whl"
+          test -f "$wheel"
+          local_sha=$(sha256sum "$wheel" | cut -d' ' -f1)
+          pypi_sha=""
+          for attempt in $(seq 1 40); do
+            pypi_sha=$(curl -fsSL "https://pypi.org/pypi/nz-openbank-mcp/${version}/json" \
+              | jq -r --arg n "$(basename "$wheel")" '.urls[] | select(.filename == $n) | .digests.sha256' || true)
+            if [ -n "$pypi_sha" ]; then break; fi
+            echo "attempt $attempt: not on PyPI yet"
+            if [ "$attempt" -lt 40 ]; then sleep 15; fi
+          done
+          echo "dist: $local_sha"
+          echo "PyPI: $pypi_sha"
+          test -n "$pypi_sha" && test "$pypi_sha" = "$local_sha"
+
+      # No registry-url: setup-node would write an .npmrc expecting a token.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+
+      - name: npm supports trusted publishing (11.5.1 or later)
+        run: |
+          version=$(npm --version)
+          echo "npm $version"
+          printf '%s\n%s\n' 11.5.1 "$version" | sort -V -C
+
+      # --ignore-scripts: nothing runs while this job can mint an OIDC token.
+      # "./" matters: npm reads a bare "dir/file.tgz" as a GitHub user/repo.
+      # CI's "npm publish dry run" runs this command with --dry-run on PRs.
+      - env:
+          TARBALL: ${{ needs.build-npm.outputs.tarball }}
+        run: npm publish "./npm-tarball/$TARBALL" --access public --provenance --ignore-scripts
+
   publish-registry:
     name: publish server.json to the MCP Registry
-    needs: publish
+    # The registry checks both packages: PyPI through README.md's mcp-name
+    # line, npm through mcpName in package.json.
+    needs: [publish, publish-npm]
     if: inputs.publish
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -298,13 +446,12 @@ jobs:
           ref: ${{ github.sha }}
           persist-credentials: false
 
-      - name: assert server.json version matches the tag
+      - name: assert server.json versions match the tag
         run: |
-          version="$(jq -r '.version' server.json)"
-          package="$(jq -r '.packages[0].version' server.json)"
           tag="${GITHUB_REF_NAME#v}"
-          if [ "$version" != "$tag" ] || [ "$package" != "$tag" ]; then
-            echo "server.json version $version / package $package != tag $tag"
+          versions="$(jq -r '[.version, .packages[].version] | unique | join(" ")' server.json)"
+          if [ "$versions" != "$tag" ]; then
+            echo "server.json versions $versions != tag $tag"
             exit 1
           fi
 
@@ -326,7 +473,7 @@ jobs:
           tar xzf "$archive" mcp-publisher
 
       - name: publish
-        # The registry checks the PyPI release, which can lag the upload by minutes.
+        # The registry checks the PyPI and npm releases, which can lag the upload by minutes.
         run: |
           ./mcp-publisher login github-oidc
           for attempt in 1 2 3 4 5 6; do

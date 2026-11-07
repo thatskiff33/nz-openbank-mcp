@@ -1,0 +1,3 @@
+# The npm launcher is packed on Linux, but keep its files LF everywhere so a
+# tarball packed on Windows still has a working shebang.
+npm/** text eol=lf

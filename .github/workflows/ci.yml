@@ -71,7 +71,9 @@ jobs:
               - 'src/nz_openbank_mcp/__init__.py'
               - 'scripts/check_packaging.py'
               - 'scripts/sync_plugin_manifests.py'
+              - 'scripts/check_npm_tarball.py'
               - 'server.json'
+              - 'npm/**'
               - 'examples/**'
               - 'Dockerfile'
               - '.dockerignore'
@@ -281,6 +283,66 @@ jobs:
           uv run --isolated --no-project --with "$wheel" \
             python -c "from nz_openbank_mcp.server import build_server; build_server()"
 
+  # The npm launcher (npm/) on each OS. Windows has no fake uvx script, so it
+  # runs a renamed node.exe as uvx.exe to prove the lookup and exit status.
+  npm-launcher:
+    name: npm launcher (${{ matrix.os }}, node ${{ matrix.node }})
+    needs: changes
+    if: needs.changes.outputs.packaging == 'true'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node: ["24"]
+        include:
+          - os: ubuntu-latest
+            node: "22" # the oldest version npm/package.json accepts
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ matrix.node }}
+          package-manager-cache: false
+      - run: node --test npm/test/launch.test.js
+
+  # Runs the release's npm publish command (release.yml, publish-npm) with
+  # --dry-run, which needs no login and sends nothing. --provenance is left out
+  # because it needs the release job's OIDC token. npm refuses even a dry run
+  # of a version it already has, and between releases npm/package.json holds
+  # the published version, so this job alone moves to the next patch first.
+  npm-publish-dry-run:
+    name: npm publish dry run
+    needs: changes
+    if: needs.changes.outputs.packaging == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Node 24, as in the release, so the dry run uses the same npm.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - name: move to the next patch version
+        working-directory: npm
+        run: npm version patch --no-git-tag-version --ignore-scripts
+      - name: pack and check the tarball as the release does
+        run: |
+          version=$(jq -r .version npm/package.json)
+          tarball="nz-openbank-mcp-${version}.tgz"
+          mkdir -p npm-tarball
+          npm pack ./npm --pack-destination npm-tarball --ignore-scripts
+          python3 scripts/check_npm_tarball.py "npm-tarball/$tarball" "$version"
+          echo "TARBALL=$tarball" >> "$GITHUB_ENV"
+      # "./" matters: npm reads a bare "dir/file.tgz" as a GitHub user/repo.
+      - run: npm publish "./npm-tarball/$TARBALL" --access public --ignore-scripts --dry-run
+
   docs:
     name: docs
     needs: changes
@@ -377,7 +439,19 @@ jobs:
   ci-ok:
     name: ci-ok
     if: always()
-    needs: [changes, lint, types, test, audit, workflow-lint, packaging, docs, image, fresh-deps]
+    needs:
+      - changes
+      - lint
+      - types
+      - test
+      - audit
+      - workflow-lint
+      - packaging
+      - npm-launcher
+      - npm-publish-dry-run
+      - docs
+      - image
+      - fresh-deps
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

@@ -4,6 +4,15 @@ Notable changes per release. Full notes and downloads are on the
 [Releases page](https://github.com/thatskiff33/nz-openbank-mcp/releases).
 Versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+- New install route: the npm package `nz-openbank-mcp`
+  (`npx -y nz-openbank-mcp@X.Y.Z`), a launcher with no dependencies that runs
+  the PyPI release of the same version with `uvx`, so it still needs `uv`. It
+  is published from the release workflow by trusted publishing, with
+  provenance, and listed in the MCP Registry entry. The plugins, the Desktop
+  Extension and the container image are unchanged.
+
 ## 0.1.7 - 2026-11-07
 
 ### Upgrading from 0.1.6

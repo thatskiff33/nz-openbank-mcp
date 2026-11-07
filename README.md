@@ -113,7 +113,7 @@ fetches the release and a matching Python.
 | Grok Build | Plugin from this repo's marketplace | Environment Grok starts in |
 | claude.ai, ChatGPT, grok.com | Self-hosted HTTPS server with OAuth | Your server's environment |
 | ChatGPT Business | OpenAI Secure MCP Tunnel (no public server) | Your host's environment |
-| Anything else that speaks MCP | `uvx nz-openbank-mcp` | Environment of the client |
+| Anything else that speaks MCP | `uvx nz-openbank-mcp` or `npx -y nz-openbank-mcp` | Environment of the client |
 
 Every option below starts with `AKAHU_READ_ONLY=true` and
 `AKAHU_AUTOMATION_BYPASS=false`.
@@ -228,6 +228,10 @@ variables:
 ```bash
 uvx nz-openbank-mcp            # or pin: uvx --from nz-openbank-mcp==X.Y.Z nz-openbank-mcp
 ```
+
+Clients that expect an npm package can use `npx -y nz-openbank-mcp@X.Y.Z`
+instead. It is a small launcher with no dependencies that runs the PyPI
+release of the same version through `uvx`, so it still needs `uv`.
 
 [`examples/claude_desktop_config.json`](https://github.com/thatskiff33/nz-openbank-mcp/blob/main/examples/claude_desktop_config.json)
 shows the shape most JSON-configured clients expect. To use it with Claude
