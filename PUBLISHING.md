@@ -91,11 +91,13 @@ or renamed. Step 5 is done once, on the day of the first npm release.
       the package and its trusted publisher, and npm then blocks new versions
       for 24 hours. Do it within 72 hours of publishing the placeholder, while
       npm's [unpublish policy](https://docs.npmjs.com/policies/unpublish)
-      allows it without conditions, then `npm logout`:
+      allows it (no other package may depend on it):
 
       ```bash
+      npm login
       npm dist-tag rm nz-openbank-mcp placeholder
       npm unpublish nz-openbank-mcp@0.0.0-placeholder.0
+      npm logout
       ```
 
 ## Cutting a release

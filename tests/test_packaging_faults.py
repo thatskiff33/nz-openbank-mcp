@@ -40,6 +40,8 @@ PACKAGING_FILES = [
     "npm/bin/nz-openbank-mcp.js",
     "npm/bin/nz-openbank-mcp-http.js",
     "npm/lib/launch.js",
+    ".github/workflows/ci.yml",
+    ".github/workflows/release.yml",
 ]
 
 
@@ -445,3 +447,24 @@ def test_root_npmrc_is_refused(checkout: Path) -> None:
     result = _check(checkout)
     assert result.returncode == 1
     assert ".npmrc must not exist at the repo root" in result.stderr
+
+
+def test_ci_dry_run_must_use_the_release_node_pin(checkout: Path) -> None:
+    path = checkout / ".github/workflows/release.yml"
+    text = path.read_text(encoding="utf-8")
+    assert text.count('NPM_NODE_VERSION: "') == 1
+    path.write_text(text.replace('NPM_NODE_VERSION: "', 'NPM_NODE_VERSION: "1'), encoding="utf-8")
+    result = _check(checkout)
+    assert result.returncode == 1
+    assert "the npm publish dry run must use Node 1" in result.stderr
+
+
+def test_release_node_pin_must_be_exact(checkout: Path) -> None:
+    path = checkout / ".github/workflows/release.yml"
+    text = path.read_text(encoding="utf-8")
+    path.write_text(
+        text.replace('NPM_NODE_VERSION: "24.16.0"', 'NPM_NODE_VERSION: "lts/*"'), encoding="utf-8"
+    )
+    result = _check(checkout)
+    assert result.returncode == 1
+    assert "NPM_NODE_VERSION must pin an exact Node version" in result.stderr

@@ -440,6 +440,18 @@ def check_npm(version: str) -> None:
         fail("npm/lib/launch.js: must not start uvx through a shell")
 
 
+def check_npm_node_pin() -> None:
+    """CI's npm publish dry run uses the release's pinned Node (and so npm)."""
+    release = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    pin = re.search(r'NPM_NODE_VERSION: "([0-9.]+)"', release)
+    if not pin:
+        fail(".github/workflows/release.yml: NPM_NODE_VERSION must pin an exact Node version")
+        return
+    ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    if f'node-version: "{pin[1]}"' not in ci:
+        fail(f".github/workflows/ci.yml: the npm publish dry run must use Node {pin[1]}")
+
+
 def check_claude_marketplace() -> None:
     rel = ".claude-plugin/marketplace.json"
     marketplace = load(rel)
@@ -501,6 +513,7 @@ def main(argv: list[str] | None = None) -> int:
     check_other_hosts(version, set(user_config))
     check_registry(version, set(user_config))
     check_npm(version)
+    check_npm_node_pin()
     check_dockerfile()
     check_example(version, set(user_config))
 

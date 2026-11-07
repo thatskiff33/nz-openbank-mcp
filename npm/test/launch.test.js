@@ -13,7 +13,7 @@ const path = require('node:path');
 const { test } = require('node:test');
 
 const { version } = require('../package.json');
-const { findUvx, uvxArgs } = require('../lib/launch.js');
+const { findUvx, forwardedSignals, uvxArgs } = require('../lib/launch.js');
 
 const BIN = path.join(__dirname, '..', 'bin');
 const POSIX = process.platform !== 'win32';
@@ -129,6 +129,16 @@ test('findUvx takes the first absolute PATH entry that has uvx, quoted or not', 
   const quoted = ['', '.', empty, `"${first}"`, second].join(path.delimiter);
   assert.equal(findUvx(quoted), path.join(first, name));
   assert.equal(findUvx(''), null);
+});
+
+test('which signals are passed on, by platform and terminal', () => {
+  // MCP host (stdin a pipe) on Linux or macOS: everything.
+  assert.deepEqual(forwardedSignals(false, 'linux'), ['SIGTERM', 'SIGHUP', 'SIGINT']);
+  // Terminal: Ctrl+C already reached uvx through the process group.
+  assert.deepEqual(forwardedSignals(true, 'darwin'), ['SIGTERM', 'SIGHUP']);
+  // Windows: SIGINT only comes from the console, and SIGHUP cannot be sent.
+  assert.deepEqual(forwardedSignals(false, 'win32'), ['SIGTERM']);
+  assert.deepEqual(forwardedSignals(true, 'win32'), ['SIGTERM']);
 });
 
 test('passes the pinned release and the arguments unchanged', { skip: !POSIX }, async () => {

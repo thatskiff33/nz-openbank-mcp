@@ -44,16 +44,18 @@ function findUvx(pathValue) {
 
 // Hosts stop servers with SIGTERM (or SIGINT), sent to this process only, so
 // those are passed on. In a terminal, Ctrl+C already reaches uvx through the
-// process group (on Windows, every process on the console), so SIGINT is not
-// passed on there: a second one would turn a graceful shutdown into a forced
-// one. Windows cannot send SIGHUP to a child.
-function forwardedSignals(interactive) {
+// process group, so SIGINT is not passed on there: a second one would turn a
+// graceful shutdown into a forced one. On Windows, SIGINT only ever arrives
+// from a console Ctrl+C, which every process on the console gets, and
+// kill('SIGINT') there would terminate uvx outright, so it is never passed
+// on. Windows cannot send SIGHUP to a child either.
+function forwardedSignals(interactive, platform = process.platform) {
   const signals = ['SIGTERM'];
-  if (!WINDOWS) {
+  if (platform !== 'win32') {
     signals.push('SIGHUP');
-  }
-  if (!interactive) {
-    signals.push('SIGINT');
+    if (!interactive) {
+      signals.push('SIGINT');
+    }
   }
   return signals;
 }
@@ -81,7 +83,7 @@ function run(entry, args = process.argv.slice(2)) {
   let started = false;
   const interactive = isatty(0);
   const forwarded = forwardedSignals(interactive);
-  const ignored = interactive ? ['SIGINT'] : [];
+  const ignored = forwarded.includes('SIGINT') ? [] : ['SIGINT'];
   const forward = (signal) => {
     if (child.exitCode === null && child.signalCode === null) {
       try {
@@ -134,4 +136,4 @@ function run(entry, args = process.argv.slice(2)) {
   });
 }
 
-module.exports = { findUvx, run, uvxArgs };
+module.exports = { findUvx, forwardedSignals, run, uvxArgs };
