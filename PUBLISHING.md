@@ -183,8 +183,9 @@ Jobs:
 - `publish-testpypi` (dry run only, after `build` and `build-mcpb`) uploads to
   TestPyPI. `publish-npm-dry-run` (dry run only) runs the npm publish command
   with `--dry-run`, which sends nothing.
-- `github-release` (publish only, after `publish` and `publish-npm`, so its notes never announce an npm version that failed) attests the wheel, sdist and
-  `.mcpb`, creates the GitHub Release as a draft with those files and the
+- `github-release` (publish only, after `publish` and `publish-npm`, so its
+  notes never announce an npm version that failed) attests the wheel, sdist
+  and `.mcpb`, creates the GitHub Release as a draft with those files and the
   changelog section as notes, then publishes it as the latest release. It is
   the only job with repository write access.
 - `publish` (publish only, after `build`, `build-mcpb` and `build-npm`) waits
@@ -222,8 +223,8 @@ https://github.com/thatskiff33/nz-openbank-mcp/releases.
 npm never accepts the same version twice. If `publish-npm` fails after PyPI
 succeeded, fix the cause (often an expired or missing trusted publisher, see
 one-time setup step 5) and re-run only the failed jobs from the same workflow
-run. The re-run waits for a new `npm` approval; `publish-registry` runs once
-npm succeeds.
+run. The re-run waits for a new `npm` approval. `publish-registry` and
+`github-release` (with the `.mcpb` download) wait until npm succeeds.
 
 ## Manual publish (fallback)
 
