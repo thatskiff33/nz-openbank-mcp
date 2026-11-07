@@ -190,11 +190,13 @@ needs read-only refusal and all three consent outcomes.
 ## Packaging
 
 One codebase ships as a PyPI package, a plugin for Claude Code, Codex, Cursor
-and Grok Build (`plugin/`, with this repo as each host's marketplace), and a
-Claude Desktop Extension (`mcpb/`).
+and Grok Build (`plugin/`, with this repo as each host's marketplace), a
+Claude Desktop Extension (`mcpb/`), and an npm launcher (`npm/`) that runs
+the PyPI release of the same version through `uvx`.
 
-All host manifests, `server.json` and `examples/claude_desktop_config.json`
-are generated from `plugin/plugin.base.toml` by
+All host manifests, `server.json`, `examples/claude_desktop_config.json`,
+`npm/package.json` and the `npm/` copies of `LICENSE` and `NOTICE` are
+generated from `plugin/plugin.base.toml` by
 `scripts/sync_plugin_manifests.py`, which takes the version from
 `pyproject.toml`. Edit the base file or the generator, regenerate, and commit
 the output; CI fails on drift.
@@ -232,6 +234,14 @@ Layout constraints:
 placeholder-only env, pinned defaults, exact Codex variable list, every
 marketplace pointing at `plugin/`, and version lockstep.
 
+The npm launcher (`npm/lib/launch.js`, tested with `node --test
+npm/test/launch.test.js`) must stay a launcher: no dependencies of any kind,
+no `scripts`, no `publishConfig`, and no `.npmrc` or lock file, all enforced
+by `check_packaging.py`. It installs and runs nothing else, so it needs no
+minimum-release-age setting; any Node tooling added later must come with a
+14-day minimum release age. `scripts/check_npm_tarball.py` checks that the
+packed tarball holds exactly the files in `npm/`.
+
 ## CI and releases
 
 `ci.yml` runs on PRs, pushes to `main`, weekly and on dispatch. PRs run only
@@ -254,7 +264,8 @@ To release: bump `version` in `pyproject.toml` and `__version__` in
 `## X.Y.Z - <date>`, regenerate the manifests, merge, tag the
 merge commit `vX.Y.Z`, run `gh workflow run release.yml --ref vX.Y.Z` for the
 TestPyPI dry run, then run `gh workflow run release.yml --ref vX.Y.Z -f
-publish=true` and approve the `pypi` environment. The workflow creates and
+publish=true` and approve the `pypi` environment (one approval releases
+both PyPI and npm). The workflow creates and
 publishes the GitHub Release itself; never create it by hand, because releases
 are immutable once published. `release.yml` builds only a tag whose commit is
 on `main` with a green `ci.yml` push run. `PUBLISHING.md` has the full steps.

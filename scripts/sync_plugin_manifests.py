@@ -1,8 +1,9 @@
 """Generate every host plugin manifest from plugin/plugin.base.toml.
 
 Writes the Claude Code, Codex, Cursor and Grok Build plugin manifests, their
-MCP launch specs, each host's repo marketplace index, and the Desktop Extension
-manifest. The version comes from pyproject.toml, so a version bump is one edit
+MCP launch specs, each host's repo marketplace index, the Desktop Extension
+manifest, and the npm launcher's package.json with its LICENSE and NOTICE
+copies. The version comes from pyproject.toml, so a version bump is one edit
 plus a re-run. `--check` exits non-zero if any committed file differs from what
 would be generated.
 
@@ -38,6 +39,11 @@ PLUGIN_DIR = "plugin"
 CODEX_MCP = "codex-mcp.json"
 # Grok ignores inline mcpServers in its manifest; it needs a path.
 GROK_MCP = "grok-mcp.json"
+# The npm launcher: one bin per console script in pyproject.toml.
+NPM_DIR = "npm"
+NPM_BINS = ("nz-openbank-mcp", "nz-openbank-mcp-http")
+# Files npm/ ships as exact copies of the repository root's.
+NPM_COPIES = ("LICENSE", "NOTICE")
 
 
 def load_base() -> dict[str, Any]:
@@ -285,6 +291,35 @@ def mcpb_manifest(base: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def npm_package(base: dict[str, Any]) -> dict[str, Any]:
+    """npm/package.json: a launcher that runs the PyPI release of the same version.
+
+    No dependencies and no scripts, so installing it runs nothing. npm checks
+    that repository.url matches the repository a provenance-signed publish
+    comes from.
+    """
+    return {
+        "name": base["name"],
+        "version": base["version"],
+        "description": f"{base['description']} Starts the PyPI release with uvx, so it needs uv.",
+        "mcpName": base["registry"]["name"],
+        "license": base["license"],
+        "author": base["author"]["name"],
+        "homepage": base["homepage"],
+        "repository": {
+            "type": "git",
+            "url": f"git+{base['repository']}.git",
+            "directory": NPM_DIR,
+        },
+        "bugs": {"url": base["support"]},
+        "keywords": base["keywords"],
+        "type": "commonjs",
+        "engines": {"node": ">=22"},
+        "bin": {name: f"bin/{name}.js" for name in NPM_BINS},
+        "files": ["bin/", "lib/", "NOTICE"],
+    }
+
+
 def registry_server(base: dict[str, Any]) -> dict[str, Any]:
     registry = base["registry"]
     env = []
@@ -317,7 +352,16 @@ def registry_server(base: dict[str, Any]) -> dict[str, Any]:
                 "runtimeHint": "uvx",
                 "transport": {"type": "stdio"},
                 "environmentVariables": env,
-            }
+            },
+            {
+                "registryType": "npm",
+                "registryBaseUrl": "https://registry.npmjs.org",
+                "identifier": base["name"],
+                "version": base["version"],
+                "runtimeHint": "npx",
+                "transport": {"type": "stdio"},
+                "environmentVariables": env,
+            },
         ],
     }
 
@@ -349,11 +393,19 @@ def render(base: dict[str, Any]) -> dict[str, dict[str, Any]]:
         "mcpb/manifest.json": mcpb_manifest(base),
         "server.json": registry_server(base),
         "examples/claude_desktop_config.json": example_config(base),
+        f"{NPM_DIR}/package.json": npm_package(base),
     }
 
 
 def serialise(data: dict[str, Any]) -> str:
     return json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+
+
+def expected_files(base: dict[str, Any]) -> dict[str, str]:
+    files = {rel: serialise(data) for rel, data in render(base).items()}
+    for name in NPM_COPIES:
+        files[f"{NPM_DIR}/{name}"] = (ROOT / name).read_text(encoding="utf-8")
+    return files
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -362,9 +414,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     stale: list[str] = []
-    for rel, data in render(load_base()).items():
+    for rel, expected in expected_files(load_base()).items():
         path = ROOT / rel
-        expected = serialise(data)
         current = path.read_text(encoding="utf-8") if path.is_file() else None
         if current == expected:
             continue

@@ -22,6 +22,7 @@ if not (Path(__file__).resolve().parent.parent / "scripts").is_dir():
     collect_ignore = [
         "test_commit_emails.py",
         "test_mcpb_bundle_check.py",
+        "test_npm_tarball_check.py",
         "test_packaging_faults.py",
         "test_plugin_manifests.py",
     ]

@@ -8,8 +8,11 @@ is injected, the plugin and Desktop Extension declare the same keys, tokens are
 marked sensitive, and safety defaults stay read-only. For Codex, Cursor and
 Grok: env values are placeholders only (no literal values), Codex forwards
 exactly the declared variables, Cursor and Grok carry the same safe inline
-defaults, and every marketplace index points at plugin/. server.json marks the
-tokens secret with no default and carries the pinned defaults; no sensitive key
+defaults, and every marketplace index points at plugin/. server.json lists the
+PyPI and npm packages at the pinned version, marks the tokens secret with no
+default and carries the pinned defaults. The npm launcher (npm/) has the same
+version, no dependencies, scripts or publish settings, exactly its two bins and
+file list, and starts the pinned PyPI release with uvx and no shell. No sensitive key
 has a default anywhere; the Dockerfile keeps the safe AKAHU_* defaults and its
 RUN commands use only allowlisted programs and uv commands; and
 examples/claude_desktop_config.json runs the pinned release with safe values.
@@ -48,6 +51,43 @@ UV_ALLOWED = {
     ("pip", "install"): {"--no-deps", "--no-build"},
     ("pip", "check"): set(),
     ("pip", "list"): set(),
+}
+
+PACKAGE = "nz-openbank-mcp"
+# The npm launcher: one bin per console script, and only these in the tarball
+# (npm adds package.json, README.md and LICENSE itself).
+NPM_BINS = {
+    "nz-openbank-mcp": "bin/nz-openbank-mcp.js",
+    "nz-openbank-mcp-http": "bin/nz-openbank-mcp-http.js",
+}
+NPM_FILES = ["bin/", "lib/", "NOTICE"]
+NPM_REPOSITORY = "git+https://github.com/thatskiff33/nz-openbank-mcp.git"
+# Anything that would make installing or publishing the launcher fetch or run
+# other code, or send it somewhere else.
+NPM_FORBIDDEN_KEYS = {
+    "dependencies",
+    "devDependencies",
+    "optionalDependencies",
+    "peerDependencies",
+    "bundleDependencies",
+    "bundledDependencies",
+    "overrides",
+    "workspaces",
+    "scripts",
+    "gypfile",
+    "publishConfig",
+}
+NPM_FORBIDDEN_FILES = (
+    ".npmrc",
+    ".npmignore",
+    "package-lock.json",
+    "npm-shrinkwrap.json",
+    "binding.gyp",
+)
+# server.json install routes: registry type -> (registry, runtime hint).
+REGISTRY_PACKAGES = {
+    "pypi": ("https://pypi.org", "uvx"),
+    "npm": ("https://registry.npmjs.org", "npx"),
 }
 
 errors: list[str] = []
@@ -135,10 +175,23 @@ def check_inline_default_env(rel: str, env: dict[str, Any], keys: set[str]) -> N
         fail(f"{rel}: env {var} is not a declared setting")
 
 
-def check_registry(keys: set[str]) -> None:
+def check_registry(version: str, keys: set[str]) -> None:
     rel = "server.json"
-    for package in load(rel).get("packages", []):
-        entries = [obj(raw, rel) for raw in obj(package, rel).get("environmentVariables", [])]
+    packages = [obj(raw, rel) for raw in load(rel).get("packages", [])]
+    kinds = [package.get("registryType") for package in packages]
+    if sorted(map(str, kinds)) != sorted(REGISTRY_PACKAGES):
+        fail(f"{rel}: packages must be one each of {sorted(REGISTRY_PACKAGES)}, got {kinds}")
+    for package in packages:
+        kind = str(package.get("registryType"))
+        where = f"{rel}: {kind} package"
+        if package.get("identifier") != PACKAGE or package.get("version") != version:
+            fail(f"{where} must be {PACKAGE} {version}")
+        if kind in REGISTRY_PACKAGES:
+            registry, hint = REGISTRY_PACKAGES[kind]
+            if package.get("registryBaseUrl") != registry or package.get("runtimeHint") != hint:
+                fail(f"{where} must use {registry} with runtimeHint {hint!r}")
+    for package in packages:
+        entries = [obj(raw, rel) for raw in package.get("environmentVariables", [])]
         names = {str(entry.get("name", "")).lower() for entry in entries}
         for key in sorted(keys - names):
             fail(f"{rel}: {key.upper()} is a declared setting but is missing")
@@ -342,6 +395,63 @@ def check_other_hosts(version: str, keys: set[str]) -> None:
                 fail(f"{rel}: plugin source {path!r} must be the plugin/ directory")
 
 
+def check_npm(version: str) -> None:
+    """npm/: a launcher with no dependencies or scripts that runs the PyPI release."""
+    rel = "npm/package.json"
+    package = load(rel)
+    expected: dict[str, Any] = {
+        "name": PACKAGE,
+        "version": version,
+        "mcpName": load("server.json").get("name"),
+        "bin": NPM_BINS,
+        "files": NPM_FILES,
+    }
+    for key, want in expected.items():
+        if package.get(key) != want:
+            fail(f"{rel}: {key} must be {want!r}, got {package.get(key)!r}")
+    repository = obj(package.get("repository", {}), f"{rel}: repository")
+    if repository.get("url") != NPM_REPOSITORY:
+        fail(f"{rel}: repository.url must be {NPM_REPOSITORY!r} (npm provenance checks it)")
+    for key in sorted(NPM_FORBIDDEN_KEYS & set(package)):
+        fail(f"{rel}: {key!r} is not allowed; the launcher installs and runs nothing else")
+    for name in NPM_FORBIDDEN_FILES:
+        if (ROOT / "npm" / name).exists():
+            fail(f"npm/{name} must not exist")
+    # npm pack ./npm also reads the repository root's .npmrc.
+    if (ROOT / ".npmrc").exists():
+        fail(".npmrc must not exist at the repo root")
+    for entry, script in NPM_BINS.items():
+        path = ROOT / "npm" / script
+        text = path.read_text(encoding="utf-8") if path.is_file() else ""
+        if f"require('../lib/launch.js').run('{entry}');" not in text:
+            fail(f"npm/{script}: must call require('../lib/launch.js').run('{entry}')")
+    launcher = ROOT / "npm" / "lib" / "launch.js"
+    source = launcher.read_text(encoding="utf-8") if launcher.is_file() else ""
+    for needle in (
+        "findUvx(process.env.PATH",
+        "spawn(uvx, uvxArgs(entry, args),",
+        "'--from', `${PACKAGE}==${version}`",
+    ):
+        if needle not in source:
+            fail(f"npm/lib/launch.js: must contain {needle!r}")
+    # Outside comments, the word "shell" (as in a shell spawn option) is refused.
+    code = [line for line in source.splitlines() if not line.strip().startswith("//")]
+    if any("shell" in line for line in code):
+        fail("npm/lib/launch.js: must not start uvx through a shell")
+
+
+def check_npm_node_pin() -> None:
+    """CI's npm publish dry run uses the release's pinned Node (and so npm)."""
+    release = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    pin = re.search(r'NPM_NODE_VERSION: "([0-9.]+)"', release)
+    if not pin:
+        fail(".github/workflows/release.yml: NPM_NODE_VERSION must pin an exact Node version")
+        return
+    ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    if f'node-version: "{pin[1]}"' not in ci:
+        fail(f".github/workflows/ci.yml: the npm publish dry run must use Node {pin[1]}")
+
+
 def check_claude_marketplace() -> None:
     rel = ".claude-plugin/marketplace.json"
     marketplace = load(rel)
@@ -401,7 +511,9 @@ def main(argv: list[str] | None = None) -> int:
             fail(f"{rel}: version {data.get('version')!r} != pyproject.toml {version!r}")
 
     check_other_hosts(version, set(user_config))
-    check_registry(set(user_config))
+    check_registry(version, set(user_config))
+    check_npm(version)
+    check_npm_node_pin()
     check_dockerfile()
     check_example(version, set(user_config))
 

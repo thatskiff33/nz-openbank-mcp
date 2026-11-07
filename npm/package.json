@@ -1,0 +1,37 @@
+{
+  "name": "nz-openbank-mcp",
+  "version": "0.1.7",
+  "description": "Unofficial MCP server for the Akahu open-finance API (NZ). 14 tools, read-only by default, runs locally over stdio. Starts the PyPI release with uvx, so it needs uv.",
+  "mcpName": "io.github.thatskiff33/nz-openbank-mcp",
+  "license": "Apache-2.0",
+  "author": "thatskiff33",
+  "homepage": "https://github.com/thatskiff33/nz-openbank-mcp",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/thatskiff33/nz-openbank-mcp.git",
+    "directory": "npm"
+  },
+  "bugs": {
+    "url": "https://github.com/thatskiff33/nz-openbank-mcp/issues"
+  },
+  "keywords": [
+    "mcp",
+    "akahu",
+    "open-finance",
+    "new-zealand",
+    "banking"
+  ],
+  "type": "commonjs",
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "nz-openbank-mcp": "bin/nz-openbank-mcp.js",
+    "nz-openbank-mcp-http": "bin/nz-openbank-mcp-http.js"
+  },
+  "files": [
+    "bin/",
+    "lib/",
+    "NOTICE"
+  ]
+}

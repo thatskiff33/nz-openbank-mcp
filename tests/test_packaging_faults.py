@@ -36,6 +36,12 @@ PACKAGING_FILES = [
     "plugin/.cursor-plugin/plugin.json",
     "plugin/.grok-plugin/plugin.json",
     "plugin/grok-mcp.json",
+    "npm/package.json",
+    "npm/bin/nz-openbank-mcp.js",
+    "npm/bin/nz-openbank-mcp-http.js",
+    "npm/lib/launch.js",
+    ".github/workflows/ci.yml",
+    ".github/workflows/release.yml",
 ]
 
 
@@ -345,3 +351,120 @@ def test_example_missing_and_undeclared_entries_fail(checkout: Path) -> None:
     assert "AKAHU_READ_ONLY must be 'true', got None" in result.stderr
     assert "AKAHU_USER_TOKEN must be a placeholder" in result.stderr
     assert "env AKAHU_BASE_URL is not a declared setting" in result.stderr
+
+
+@pytest.mark.parametrize(
+    ("change", "message"),
+    [
+        (
+            lambda d: d.update(dependencies={"left-pad": "1.3.0"}),
+            "'dependencies' is not allowed",
+        ),
+        (lambda d: d.update(scripts={"postinstall": "node x.js"}), "'scripts' is not allowed"),
+        (
+            lambda d: d.update(publishConfig={"provenance": False}),
+            "'publishConfig' is not allowed",
+        ),
+        (lambda d: d.update(version="9.9.9"), "version must be '0."),
+        (lambda d: d.update(mcpName="io.github.someone/else"), "mcpName must be"),
+        (lambda d: d["bin"].update(extra="bin/extra.js"), "bin must be"),
+        (lambda d: d["files"].append("test/"), "files must be"),
+        (
+            lambda d: d["repository"].update(url="git+https://github.com/x/y.git"),
+            "repository.url must be",
+        ),
+    ],
+)
+def test_npm_package_must_stay_a_bare_launcher(
+    checkout: Path, change: Callable[[Any], None], message: str
+) -> None:
+    _edit_json(checkout / "npm/package.json", change)
+    result = _check(checkout)
+    assert result.returncode == 1
+    assert f"npm/package.json: {message}" in result.stderr
+
+
+@pytest.mark.parametrize("name", [".npmrc", "package-lock.json", ".npmignore"])
+def test_npm_config_and_lock_files_are_refused(checkout: Path, name: str) -> None:
+    (checkout / "npm" / name).write_text("{}", encoding="utf-8")
+    result = _check(checkout)
+    assert result.returncode == 1
+    assert f"npm/{name} must not exist" in result.stderr
+
+
+@pytest.mark.parametrize(
+    ("rel", "old", "new", "message"),
+    [
+        (
+            "npm/lib/launch.js",
+            "{ stdio: 'inherit', windowsHide: true }",
+            "{ stdio: 'inherit', windowsHide: true, ...{ shell: true } }",
+            "must not start uvx through a shell",
+        ),
+        (
+            "npm/lib/launch.js",
+            "spawn(uvx, uvxArgs(entry, args),",
+            "spawn('uvx', uvxArgs(entry, args),",
+            "must contain 'spawn(uvx, uvxArgs(entry, args),'",
+        ),
+        (
+            "npm/bin/nz-openbank-mcp-http.js",
+            ".run('nz-openbank-mcp-http')",
+            ".run('nz-openbank-mcp')",
+            "must call require('../lib/launch.js').run('nz-openbank-mcp-http')",
+        ),
+    ],
+)
+def test_npm_launcher_must_run_the_pinned_release(
+    checkout: Path, rel: str, old: str, new: str, message: str
+) -> None:
+    path = checkout / rel
+    text = path.read_text(encoding="utf-8")
+    assert text.count(old) == 1
+    path.write_text(text.replace(old, new), encoding="utf-8")
+    result = _check(checkout)
+    assert result.returncode == 1
+    assert message in result.stderr
+
+
+def test_registry_must_list_pypi_and_npm_at_the_release_version(checkout: Path) -> None:
+    def change(d: Any) -> None:
+        d["packages"][1].update(version="0.0.1", runtimeHint="node")
+        d["packages"].append(dict(d["packages"][0], registryType="oci"))
+
+    _edit_json(checkout / "server.json", change)
+    result = _check(checkout)
+    assert result.returncode == 1
+    assert "server.json: packages must be one each of ['npm', 'pypi']" in result.stderr
+    assert "server.json: npm package must be nz-openbank-mcp 0." in result.stderr
+    assert "npm package must use https://registry.npmjs.org with runtimeHint 'npx'" in (
+        result.stderr
+    )
+
+
+def test_root_npmrc_is_refused(checkout: Path) -> None:
+    (checkout / ".npmrc").write_text("registry=https://example.invalid/", encoding="utf-8")
+    result = _check(checkout)
+    assert result.returncode == 1
+    assert ".npmrc must not exist at the repo root" in result.stderr
+
+
+def test_ci_dry_run_must_use_the_release_node_pin(checkout: Path) -> None:
+    path = checkout / ".github/workflows/release.yml"
+    text = path.read_text(encoding="utf-8")
+    assert text.count('NPM_NODE_VERSION: "') == 1
+    path.write_text(text.replace('NPM_NODE_VERSION: "', 'NPM_NODE_VERSION: "1'), encoding="utf-8")
+    result = _check(checkout)
+    assert result.returncode == 1
+    assert "the npm publish dry run must use Node 1" in result.stderr
+
+
+def test_release_node_pin_must_be_exact(checkout: Path) -> None:
+    path = checkout / ".github/workflows/release.yml"
+    text = path.read_text(encoding="utf-8")
+    path.write_text(
+        text.replace('NPM_NODE_VERSION: "24.16.0"', 'NPM_NODE_VERSION: "lts/*"'), encoding="utf-8"
+    )
+    result = _check(checkout)
+    assert result.returncode == 1
+    assert "NPM_NODE_VERSION must pin an exact Node version" in result.stderr
